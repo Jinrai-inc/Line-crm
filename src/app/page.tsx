@@ -46,23 +46,24 @@ function StatCard({
   loading?: boolean
 }) {
   return (
-    <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-sm text-muted-foreground">{label}</p>
+    <div className="bg-card rounded-2xl border border-border p-4 sm:p-6 shadow-sm">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="text-xs sm:text-sm text-muted-foreground whitespace-nowrap">{label}</p>
           {loading ? (
             <div className="h-9 mt-1 flex items-center">
               <Loader2 className="animate-spin text-muted-foreground" size={20} />
             </div>
           ) : (
-            <p className="text-3xl font-bold mt-1">{value}</p>
+            <p className="text-2xl sm:text-3xl font-bold mt-1">{value}</p>
           )}
         </div>
         <div
-          className="w-12 h-12 rounded-xl flex items-center justify-center"
+          className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center shrink-0"
           style={{ backgroundColor: `${color}15` }}
         >
-          <Icon size={24} style={{ color }} />
+          <Icon size={20} className="sm:hidden" style={{ color }} />
+          <Icon size={24} className="hidden sm:block" style={{ color }} />
         </div>
       </div>
     </div>
