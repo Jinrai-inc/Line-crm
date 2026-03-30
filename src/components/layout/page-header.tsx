@@ -3,6 +3,17 @@
 import type { ReactNode } from "react"
 import { modules } from "@/lib/modules"
 import { useAppStore } from "@/stores/app-store"
+import {
+  CalendarDays,
+  HeartHandshake,
+  type LucideIcon,
+} from "lucide-react"
+
+const moduleIconMap: Record<string, LucideIcon> = {
+  CalendarDays,
+  HeartHandshake,
+}
+
 interface PageHeaderProps {
   title: string
   description?: string
@@ -12,16 +23,17 @@ interface PageHeaderProps {
 export function PageHeader({ title, description, action }: PageHeaderProps) {
   const activeModule = useAppStore((state) => state.activeModule)
   const currentModule = modules[activeModule]
+  const Icon = moduleIconMap[currentModule.icon]
 
   return (
     <div className="mb-6">
       <div>
         {/* Module badge */}
         <span
-          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium text-white mb-2"
+          className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium text-white mb-2"
           style={{ backgroundColor: currentModule.color }}
         >
-          <span>{currentModule.icon}</span>
+          {Icon && <Icon size={12} />}
           <span>{currentModule.label}</span>
         </span>
 

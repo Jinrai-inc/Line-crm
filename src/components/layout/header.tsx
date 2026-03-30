@@ -1,13 +1,27 @@
 "use client"
 
 import { useState, useRef, useEffect } from "react"
-import { Menu, LogOut, User, ChevronDown } from "lucide-react"
+import {
+  Menu,
+  LogOut,
+  User,
+  ChevronDown,
+  CalendarDays,
+  HeartHandshake,
+  type LucideIcon,
+} from "lucide-react"
 import { modules } from "@/lib/modules"
 import { useAppStore } from "@/stores/app-store"
+
+const moduleIconMap: Record<string, LucideIcon> = {
+  CalendarDays,
+  HeartHandshake,
+}
 
 export function Header() {
   const { activeModule, toggleSidebar } = useAppStore()
   const currentModule = modules[activeModule]
+  const ModIcon = moduleIconMap[currentModule.icon]
 
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const userMenuRef = useRef<HTMLDivElement>(null)
@@ -24,9 +38,8 @@ export function Header() {
 
   return (
     <header className="sticky top-0 z-30 flex items-center justify-between h-14 px-3 sm:px-4 lg:px-6 bg-white border-b border-gray-200">
-      {/* Left side: mobile menu + page title area */}
+      {/* Left side: mobile menu + module badge */}
       <div className="flex items-center gap-2 sm:gap-3">
-        {/* Hamburger menu button - visible on md and below */}
         <button
           onClick={toggleSidebar}
           className="lg:hidden p-2 -ml-2 rounded-lg text-gray-600 hover:bg-gray-100 active:bg-gray-200 transition-colors"
@@ -37,10 +50,10 @@ export function Header() {
 
         {/* Module badge */}
         <span
-          className="inline-flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded-full text-xs font-semibold text-white"
+          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold text-white"
           style={{ backgroundColor: currentModule.color }}
         >
-          <span>{currentModule.icon}</span>
+          {ModIcon && <ModIcon size={14} />}
           <span className="hidden xs:inline">{currentModule.label}</span>
         </span>
       </div>
@@ -69,7 +82,6 @@ export function Header() {
             <button
               onClick={() => {
                 setUserMenuOpen(false)
-                // Handle logout
               }}
               className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
             >
