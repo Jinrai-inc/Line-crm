@@ -19,7 +19,7 @@ export const modules: Record<string, BusinessModule> = {
   seminar: {
     id: "seminar",
     label: "セミナー事業",
-    icon: "📅",
+    icon: "CalendarDays",
     color: "#06C755",
     colorLight: "#D1FAE5",
     colorDark: "#04A847",
@@ -27,14 +27,14 @@ export const modules: Record<string, BusinessModule> = {
     navItems: [
       { label: "友だち管理", href: "/friends", icon: "Users" },
       { label: "セミナー管理", href: "/seminars", icon: "Calendar" },
-      { label: "参加履歴", href: "/attendance", icon: "CheckSquare" },
+      { label: "参加履歴", href: "/attendances", icon: "CheckSquare" },
       { label: "配信", href: "/broadcasts", icon: "Send" },
     ],
   },
   marriage: {
     id: "marriage",
     label: "婚活スクール",
-    icon: "💍",
+    icon: "HeartHandshake",
     color: "#EC4899",
     colorLight: "#FCE7F3",
     colorDark: "#DB2777",
@@ -42,9 +42,9 @@ export const modules: Record<string, BusinessModule> = {
     navItems: [
       { label: "会員管理", href: "/members", icon: "Heart" },
       { label: "お見合い管理", href: "/omiai", icon: "HeartHandshake" },
-      { label: "コーチング記録", href: "/consultations", icon: "ClipboardList" },
-      { label: "成婚分析", href: "/analytics/marriage", icon: "TrendingUp" },
-      { label: "LINE配信", href: "/broadcasts", icon: "Send" },
+      { label: "交際管理", href: "/dating", icon: "Users" },
+      { label: "コーチング", href: "/coaching", icon: "ClipboardList" },
+      { label: "配信", href: "/broadcasts", icon: "Send" },
     ],
   },
 }

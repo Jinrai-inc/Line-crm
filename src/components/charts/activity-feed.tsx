@@ -1,6 +1,16 @@
 "use client"
 
 import { formatRelativeTime } from "@/lib/utils/date"
+import {
+  UserPlus,
+  ClipboardList,
+  MessageSquare,
+  Megaphone,
+  PartyPopper,
+  HeartHandshake,
+  FileText,
+  type LucideIcon,
+} from "lucide-react"
 
 type ActivityType =
   | "friend_added"
@@ -23,40 +33,40 @@ type ActivityFeedProps = {
 
 const ACTIVITY_CONFIG: Record<
   ActivityType,
-  { icon: string; color: string; bg: string; label: string }
+  { icon: LucideIcon; color: string; bg: string; label: string }
 > = {
   friend_added: {
-    icon: "👤",
+    icon: UserPlus,
     color: "text-green-600",
     bg: "bg-green-50",
     label: "友だち追加",
   },
   seminar_applied: {
-    icon: "📝",
+    icon: ClipboardList,
     color: "text-blue-600",
     bg: "bg-blue-50",
     label: "セミナー申込",
   },
   message_sent: {
-    icon: "💬",
+    icon: MessageSquare,
     color: "text-purple-600",
     bg: "bg-purple-50",
     label: "メッセージ送信",
   },
   broadcast_sent: {
-    icon: "📢",
+    icon: Megaphone,
     color: "text-orange-600",
     bg: "bg-orange-50",
     label: "一斉配信",
   },
   member_joined: {
-    icon: "🎉",
+    icon: PartyPopper,
     color: "text-pink-600",
     bg: "bg-pink-50",
     label: "入会",
   },
   omiai_completed: {
-    icon: "💍",
+    icon: HeartHandshake,
     color: "text-rose-600",
     bg: "bg-rose-50",
     label: "お見合い完了",
@@ -64,7 +74,7 @@ const ACTIVITY_CONFIG: Record<
 }
 
 const DEFAULT_CONFIG = {
-  icon: "📋",
+  icon: FileText,
   color: "text-gray-600",
   bg: "bg-gray-50",
   label: "その他",
@@ -84,6 +94,7 @@ export function ActivityFeed({ activities }: ActivityFeedProps) {
       {activities.map((activity) => {
         const config =
           ACTIVITY_CONFIG[activity.type as ActivityType] ?? DEFAULT_CONFIG
+        const Icon = config.icon
 
         return (
           <div
@@ -91,9 +102,9 @@ export function ActivityFeed({ activities }: ActivityFeedProps) {
             className="flex items-start gap-3 rounded-lg px-3 py-2 hover:bg-gray-50 transition-colors"
           >
             <span
-              className={`flex shrink-0 items-center justify-center w-8 h-8 rounded-full text-sm ${config.bg}`}
+              className={`flex shrink-0 items-center justify-center w-8 h-8 rounded-full ${config.bg}`}
             >
-              {config.icon}
+              <Icon size={16} className={config.color} />
             </span>
             <div className="min-w-0 flex-1">
               <p className="text-sm text-gray-900 leading-snug">

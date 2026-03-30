@@ -9,6 +9,7 @@ import { modules } from "@/lib/modules"
 import {
   Users,
   Calendar,
+  CalendarDays,
   UserPlus,
   ClipboardList,
   Heart,
@@ -16,7 +17,13 @@ import {
   TrendingUp,
   Award,
   Loader2,
+  type LucideIcon,
 } from "lucide-react"
+
+const moduleIconMap: Record<string, LucideIcon> = {
+  CalendarDays,
+  HeartHandshake,
+}
 
 interface DashboardStats {
   seminar: {
@@ -100,7 +107,7 @@ function ModuleCard({
       />
 
       <div className="flex items-center gap-3 mb-4">
-        <span className="text-2xl">{mod.icon}</span>
+        {(() => { const MIcon = moduleIconMap[mod.icon]; return MIcon ? <div className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ backgroundColor: `${mod.color}15` }}><MIcon size={20} style={{ color: mod.color }} /></div> : null })()}
         <div>
           <h3 className="font-bold">{mod.label}</h3>
           <p className="text-xs text-muted-foreground">{mod.description}</p>

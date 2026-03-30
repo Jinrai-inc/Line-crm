@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation"
 import {
   Users,
   Calendar,
+  CalendarDays,
   CheckSquare,
   Send,
   Heart,
@@ -29,6 +30,7 @@ import { useAppStore } from "@/stores/app-store"
 const iconMap: Record<string, LucideIcon> = {
   Users,
   Calendar,
+  CalendarDays,
   CheckSquare,
   Send,
   Heart,
@@ -219,7 +221,7 @@ export function Sidebar() {
             onClick={() => setActiveModule(otherModuleId as "seminar" | "marriage")}
             className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
           >
-            <span className="text-lg">{otherModule.icon}</span>
+            {iconMap[otherModule.icon] && (() => { const OIcon = iconMap[otherModule.icon]; return <OIcon className="h-5 w-5 shrink-0" style={{ color: otherModule.color }} /> })()}
             <span>{otherModule.label}に切替</span>
           </button>
         </div>
@@ -260,7 +262,7 @@ function ModuleSwitcher({
         style={{ backgroundColor: isOpen ? "#1F2937" : undefined }}
       >
         <div className="flex items-center gap-2">
-          <span className="text-lg">{currentModule.icon}</span>
+          {iconMap[currentModule.icon] && (() => { const MIcon = iconMap[currentModule.icon]; return <MIcon className="h-5 w-5 shrink-0" style={{ color: currentModule.color }} /> })()}
           <div className="text-left">
             <p className="text-sm font-semibold text-white">
               {currentModule.label}
@@ -284,7 +286,7 @@ function ModuleSwitcher({
             }}
             className="w-full flex items-center gap-2 px-3 py-2.5 hover:bg-gray-700 transition-colors"
           >
-            <span className="text-lg">{otherModule.icon}</span>
+            {iconMap[otherModule.icon] && (() => { const OIcon = iconMap[otherModule.icon]; return <OIcon className="h-5 w-5 shrink-0" style={{ color: otherModule.color }} /> })()}
             <div className="text-left">
               <p className="text-sm font-semibold text-white">
                 {otherModule.label}
