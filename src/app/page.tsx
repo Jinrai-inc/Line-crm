@@ -1,5 +1,6 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import { AppLayout } from "@/components/layout/app-layout"
 import { PageHeader } from "@/components/layout/page-header"
 import { ModuleAccentBar } from "@/components/layout/module-accent-bar"
@@ -14,32 +15,47 @@ import {
   HeartHandshake,
   TrendingUp,
   Award,
+  Loader2,
 } from "lucide-react"
 
-// 統計カードコンポーネント
+interface DashboardStats {
+  seminar: {
+    activeFriends: number
+    openSeminars: number
+    newFriendsThisMonth: number
+    totalAttendances: number
+  }
+  marriage: {
+    activeMembers: number
+    omiaiMatchRate: number
+    marriageCount: number
+  }
+}
+
 function StatCard({
   label,
   value,
-  change,
   icon: Icon,
   color,
+  loading,
 }: {
   label: string
   value: string | number
-  change?: string
   icon: React.ElementType
   color: string
+  loading?: boolean
 }) {
   return (
     <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
       <div className="flex items-center justify-between">
         <div>
           <p className="text-sm text-muted-foreground">{label}</p>
-          <p className="text-3xl font-bold mt-1">{value}</p>
-          {change && (
-            <p className={`text-xs mt-1 ${change.startsWith("+") ? "text-green-600" : "text-red-500"}`}>
-              {change}
-            </p>
+          {loading ? (
+            <div className="h-9 mt-1 flex items-center">
+              <Loader2 className="animate-spin text-muted-foreground" size={20} />
+            </div>
+          ) : (
+            <p className="text-3xl font-bold mt-1">{value}</p>
           )}
         </div>
         <div
@@ -53,15 +69,16 @@ function StatCard({
   )
 }
 
-// モジュールカード
 function ModuleCard({
   moduleId,
   isActive,
   stats,
+  loading,
 }: {
   moduleId: "seminar" | "marriage"
   isActive: boolean
   stats: { label: string; value: string | number }[]
+  loading?: boolean
 }) {
   const setActiveModule = useAppStore((state) => state.setActiveModule)
   const mod = modules[moduleId]
@@ -76,7 +93,6 @@ function ModuleCard({
         borderColor: isActive ? mod.color : undefined,
       }}
     >
-      {/* アクセントバー */}
       <div
         className="absolute top-0 left-4 right-4 h-[3px] rounded-b"
         style={{ backgroundColor: mod.color }}
@@ -105,7 +121,11 @@ function ModuleCard({
       <div className="grid grid-cols-2 gap-3">
         {stats.map((stat) => (
           <div key={stat.label} className="text-center p-2 bg-background rounded-lg">
-            <p className="text-xl font-bold">{stat.value}</p>
+            {loading ? (
+              <Loader2 className="animate-spin text-muted-foreground mx-auto" size={16} />
+            ) : (
+              <p className="text-xl font-bold">{stat.value}</p>
+            )}
             <p className="text-xs text-muted-foreground">{stat.label}</p>
           </div>
         ))}
@@ -116,6 +136,28 @@ function ModuleCard({
 
 export default function DashboardPage() {
   const activeModule = useAppStore((state) => state.activeModule)
+  const [stats, setStats] = useState<DashboardStats | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    async function fetchStats() {
+      try {
+        const res = await fetch("/api/dashboard/stats")
+        if (res.ok) {
+          const data = await res.json()
+          setStats(data)
+        }
+      } catch (err) {
+        console.error("Failed to fetch stats:", err)
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchStats()
+  }, [])
+
+  const seminarStats = stats?.seminar
+  const marriageStats = stats?.marriage
 
   return (
     <AppLayout>
@@ -130,17 +172,19 @@ export default function DashboardPage() {
         <ModuleCard
           moduleId="seminar"
           isActive={activeModule === "seminar"}
+          loading={loading}
           stats={[
-            { label: "アクティブ友だち", value: 0 },
-            { label: "募集中セミナー", value: 0 },
+            { label: "アクティブ友だち", value: seminarStats?.activeFriends ?? 0 },
+            { label: "募集中セミナー", value: seminarStats?.openSeminars ?? 0 },
           ]}
         />
         <ModuleCard
           moduleId="marriage"
           isActive={activeModule === "marriage"}
+          loading={loading}
           stats={[
-            { label: "活動中会員", value: 0 },
-            { label: "成婚卒業", value: 0 },
+            { label: "活動中会員", value: marriageStats?.activeMembers ?? 0 },
+            { label: "成婚卒業", value: marriageStats?.marriageCount ?? 0 },
           ]}
         />
       </div>
@@ -151,37 +195,39 @@ export default function DashboardPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
             <StatCard
               label="アクティブ友だち数"
-              value={0}
-              change="+0 先月比"
+              value={seminarStats?.activeFriends ?? 0}
               icon={Users}
               color="#06C755"
+              loading={loading}
             />
             <StatCard
               label="募集中セミナー数"
-              value={0}
+              value={seminarStats?.openSeminars ?? 0}
               icon={Calendar}
               color="#3B82F6"
+              loading={loading}
             />
             <StatCard
               label="今月の新規友だち"
-              value={0}
+              value={seminarStats?.newFriendsThisMonth ?? 0}
               icon={UserPlus}
               color="#8B5CF6"
+              loading={loading}
             />
             <StatCard
               label="累計セミナー申込数"
-              value={0}
+              value={seminarStats?.totalAttendances ?? 0}
               icon={ClipboardList}
               color="#F59E0B"
+              loading={loading}
             />
           </div>
 
-          {/* プレースホルダーカード */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
               <h3 className="font-bold mb-4">友だち推移</h3>
               <div className="h-64 flex items-center justify-center text-muted-foreground">
-                データがありません
+                チャート機能は後日実装予定
               </div>
             </div>
             <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
@@ -200,27 +246,31 @@ export default function DashboardPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
             <StatCard
               label="活動中会員数"
-              value={0}
+              value={marriageStats?.activeMembers ?? 0}
               icon={Heart}
               color="#EC4899"
+              loading={loading}
             />
             <StatCard
               label="お見合い成立率"
-              value="0%"
+              value={`${marriageStats?.omiaiMatchRate ?? 0}%`}
               icon={HeartHandshake}
               color="#F59E0B"
+              loading={loading}
             />
             <StatCard
-              label="成婚率"
-              value="0%"
+              label="成婚数"
+              value={marriageStats?.marriageCount ?? 0}
               icon={Award}
               color="#06C755"
+              loading={loading}
             />
             <StatCard
               label="平均成婚期間"
               value="-"
               icon={TrendingUp}
               color="#3B82F6"
+              loading={loading}
             />
           </div>
 
@@ -228,7 +278,7 @@ export default function DashboardPage() {
             <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
               <h3 className="font-bold mb-4">会員パイプライン</h3>
               <div className="h-64 flex items-center justify-center text-muted-foreground">
-                データがありません
+                チャート機能は後日実装予定
               </div>
             </div>
             <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
