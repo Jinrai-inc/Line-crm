@@ -147,9 +147,9 @@ export function Sidebar() {
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
-        className={`fixed top-0 left-0 z-40 h-full w-64 bg-gray-900 flex flex-col sidebar-transition ${
+        className={`fixed top-0 left-0 z-40 h-screen w-64 bg-gray-900 flex flex-col shrink-0 sidebar-transition ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
-        } lg:translate-x-0 lg:static lg:z-auto`}
+        } lg:translate-x-0 lg:sticky lg:z-auto`}
       >
         {/* Logo area */}
         <div className="px-5 py-5 border-b border-gray-800">
