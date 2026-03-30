@@ -34,7 +34,7 @@ const settingsMenuItems: SettingsMenuItem[] = [
   {
     title: "Googleカレンダー連携",
     description: "Googleカレンダーとの同期を設定します",
-    href: "/settings/calendar",
+    href: "/settings/google-calendar",
     icon: <Calendar className="h-6 w-6" />,
     iconBgColor: "bg-blue-100",
     iconColor: "text-blue-600",
