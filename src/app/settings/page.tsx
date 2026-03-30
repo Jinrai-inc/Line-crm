@@ -58,7 +58,7 @@ const settingsMenuItems: SettingsMenuItem[] = [
   {
     title: "メンバー管理",
     description: "メンバーの追加・権限管理を行います",
-    href: "/settings/members",
+    href: "/settings/organization",
     icon: <Users className="h-6 w-6" />,
     iconBgColor: "bg-orange-100",
     iconColor: "text-orange-600",

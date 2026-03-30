@@ -176,7 +176,7 @@ export function Sidebar() {
         <nav className="flex-1 overflow-y-auto px-3 py-2 space-y-1">
           {/* Dashboard */}
           <NavLink
-            item={{ label: "ダッシュボード", href: "/dashboard", icon: "LayoutDashboard" }}
+            item={{ label: "ダッシュボード", href: "/", icon: "LayoutDashboard" }}
             activeColor={currentModule.color}
             pathname={pathname}
             onClick={() => setSidebarOpen(false)}

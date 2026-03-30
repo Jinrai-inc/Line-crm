@@ -178,7 +178,7 @@ export default function CoachingPage() {
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" asChild>
               <a
-                href="/settings/calendar"
+                href="/settings/google-calendar"
                 className="inline-flex items-center gap-1"
               >
                 <ExternalLinkIcon className="size-3.5" />
