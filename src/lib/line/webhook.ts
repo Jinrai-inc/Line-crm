@@ -1,0 +1,390 @@
+import { createAdminClient } from "@/lib/supabase/server"
+import { getProfile, replyMessage } from "./client"
+import { createWelcomeMessage, createDefaultReply } from "./messages"
+import { createSeminarListMessage } from "./flex-templates"
+
+// Webhookイベントの簡易型（LINEから受信するrawデータ）
+interface WebhookEvent {
+  type: string
+  timestamp: number
+  source: { type: string; userId?: string; groupId?: string }
+  replyToken?: string
+  message?: { id: string; type: string; text?: string }
+  postback?: { data: string; params?: Record<string, string> }
+}
+
+interface WebhookContext {
+  organizationId: string
+  lineAccountId: string
+  channelAccessToken: string
+  channelName: string
+}
+
+// Webhookイベントの処理
+export async function handleWebhookEvent(
+  event: WebhookEvent,
+  context: WebhookContext
+): Promise<void> {
+  switch (event.type) {
+    case "follow":
+      await handleFollow(event, context)
+      break
+    case "unfollow":
+      await handleUnfollow(event, context)
+      break
+    case "message":
+      await handleMessage(event, context)
+      break
+    case "postback":
+      await handlePostback(event, context)
+      break
+    default:
+      break
+  }
+}
+
+// 友だち追加イベント
+async function handleFollow(
+  event: WebhookEvent,
+  context: WebhookContext
+): Promise<void> {
+  const supabase = createAdminClient()
+  const userId = event.source.userId
+  if (!userId) return
+
+  // LINEプロフィール取得
+  const profile = await getProfile(userId, {
+    accessToken: context.channelAccessToken,
+  })
+
+  // 友だちをUPSERT
+  await supabase.from("friends").upsert(
+    {
+      organization_id: context.organizationId,
+      line_account_id: context.lineAccountId,
+      line_user_id: userId,
+      display_name: profile.displayName,
+      picture_url: profile.pictureUrl,
+      status: "active",
+      first_added_at: new Date().toISOString(),
+    },
+    { onConflict: "organization_id,line_user_id" }
+  )
+
+  // 「新規」タグを自動付与
+  const { data: tag } = await supabase
+    .from("tags")
+    .select("id")
+    .eq("organization_id", context.organizationId)
+    .eq("name", "新規")
+    .single()
+
+  if (tag) {
+    const { data: friend } = await supabase
+      .from("friends")
+      .select("id")
+      .eq("organization_id", context.organizationId)
+      .eq("line_user_id", userId)
+      .single()
+
+    if (friend) {
+      await supabase.from("friend_tags").upsert(
+        {
+          friend_id: friend.id,
+          tag_id: tag.id,
+          auto_assigned: true,
+        },
+        { onConflict: "friend_id,tag_id" }
+      )
+    }
+  }
+
+  // ウェルカムメッセージ送信
+  if (event.replyToken) {
+    await replyMessage(
+      event.replyToken,
+      [createWelcomeMessage(context.channelName)],
+      { accessToken: context.channelAccessToken }
+    )
+  }
+
+  // メッセージログ記録
+  await supabase.from("message_logs").insert({
+    organization_id: context.organizationId,
+    line_user_id: userId,
+    event_type: "follow",
+    raw_event: JSON.parse(JSON.stringify(event)),
+  })
+}
+
+// ブロック（友だち解除）イベント
+async function handleUnfollow(
+  event: WebhookEvent,
+  context: WebhookContext
+): Promise<void> {
+  const supabase = createAdminClient()
+  const userId = event.source.userId
+  if (!userId) return
+
+  await supabase
+    .from("friends")
+    .update({ status: "blocked" })
+    .eq("organization_id", context.organizationId)
+    .eq("line_user_id", userId)
+
+  await supabase.from("message_logs").insert({
+    organization_id: context.organizationId,
+    line_user_id: userId,
+    event_type: "unfollow",
+    raw_event: JSON.parse(JSON.stringify(event)),
+  })
+}
+
+// メッセージイベント
+async function handleMessage(
+  event: WebhookEvent,
+  context: WebhookContext
+): Promise<void> {
+  const supabase = createAdminClient()
+  const userId = event.source.userId
+  if (!userId || !event.message) return
+
+  // last_message_at を更新
+  await supabase
+    .from("friends")
+    .update({ last_message_at: new Date().toISOString() })
+    .eq("organization_id", context.organizationId)
+    .eq("line_user_id", userId)
+
+  // メッセージログ記録
+  const { data: friend } = await supabase
+    .from("friends")
+    .select("id")
+    .eq("organization_id", context.organizationId)
+    .eq("line_user_id", userId)
+    .single()
+
+  await supabase.from("message_logs").insert({
+    organization_id: context.organizationId,
+    friend_id: friend?.id,
+    line_user_id: userId,
+    event_type: "message",
+    message_type: event.message.type,
+    content: event.message.text || "",
+    raw_event: JSON.parse(JSON.stringify(event)),
+  })
+
+  // テキストメッセージの場合のみキーワード判定
+  if (event.message.type !== "text" || !event.message.text) return
+  const text = event.message.text.trim()
+
+  if (text === "セミナー一覧" || text === "セミナー") {
+    await handleSeminarList(event, context)
+  } else if (text.startsWith("参加申込")) {
+    await handleApply(event, context, text)
+  } else if (text === "参加履歴" || text === "マイページ") {
+    await handleHistory(event, context)
+  } else if (text.startsWith("キャンセル")) {
+    await handleCancel(event, context, text)
+  } else if (text === "コーチング予約") {
+    await handleBookingList(event, context)
+  } else if (text === "予約確認") {
+    await handleBookingConfirm(event, context)
+  } else if (text === "予約キャンセル") {
+    await handleBookingCancel(event, context)
+  } else {
+    // デフォルト応答
+    if (event.replyToken) {
+      await replyMessage(
+        event.replyToken,
+        [createDefaultReply()],
+        { accessToken: context.channelAccessToken }
+      )
+    }
+  }
+}
+
+// セミナー一覧
+async function handleSeminarList(
+  event: WebhookEvent,
+  context: WebhookContext
+): Promise<void> {
+  const supabase = createAdminClient()
+
+  const { data: seminars } = await supabase
+    .from("seminars")
+    .select("id, title, event_date, start_time, end_time, location, capacity")
+    .eq("organization_id", context.organizationId)
+    .eq("status", "open")
+    .order("event_date", { ascending: true })
+    .limit(10)
+
+  if (!seminars || seminars.length === 0) {
+    if (event.replyToken) {
+      await replyMessage(
+        event.replyToken,
+        [{ type: "text", text: "現在募集中のセミナーはありません。" }],
+        { accessToken: context.channelAccessToken }
+      )
+    }
+    return
+  }
+
+  // 各セミナーの申込数を取得
+  const seminarInfos = await Promise.all(
+    seminars.map(async (s: { id: string; title: string; event_date: string; start_time: string | null; end_time: string | null; location: string | null; capacity: number }) => {
+      const { count } = await supabase
+        .from("attendances")
+        .select("*", { count: "exact", head: true })
+        .eq("seminar_id", s.id)
+        .neq("status", "cancelled")
+
+      return {
+        id: s.id,
+        title: s.title,
+        eventDate: s.event_date,
+        startTime: s.start_time?.slice(0, 5),
+        endTime: s.end_time?.slice(0, 5),
+        location: s.location || undefined,
+        capacity: s.capacity,
+        attendeeCount: count || 0,
+      }
+    })
+  )
+
+  if (event.replyToken) {
+    await replyMessage(
+      event.replyToken,
+      [createSeminarListMessage(seminarInfos)],
+      { accessToken: context.channelAccessToken }
+    )
+  }
+}
+
+// セミナー申込
+async function handleApply(
+  event: WebhookEvent,
+  context: WebhookContext,
+  _text: string
+): Promise<void> {
+  // 基本実装 - 詳細はDay 3で拡張
+  if (event.replyToken) {
+    await replyMessage(
+      event.replyToken,
+      [{ type: "text", text: "申込機能は準備中です。もう少々お待ちください。" }],
+      { accessToken: context.channelAccessToken }
+    )
+  }
+}
+
+// 参加履歴
+async function handleHistory(
+  event: WebhookEvent,
+  context: WebhookContext
+): Promise<void> {
+  if (event.replyToken) {
+    await replyMessage(
+      event.replyToken,
+      [{ type: "text", text: "参加履歴機能は準備中です。" }],
+      { accessToken: context.channelAccessToken }
+    )
+  }
+}
+
+// キャンセル
+async function handleCancel(
+  event: WebhookEvent,
+  context: WebhookContext,
+  _text: string
+): Promise<void> {
+  if (event.replyToken) {
+    await replyMessage(
+      event.replyToken,
+      [{ type: "text", text: "キャンセル機能は準備中です。" }],
+      { accessToken: context.channelAccessToken }
+    )
+  }
+}
+
+// コーチング予約一覧
+async function handleBookingList(
+  event: WebhookEvent,
+  context: WebhookContext
+): Promise<void> {
+  if (event.replyToken) {
+    await replyMessage(
+      event.replyToken,
+      [{ type: "text", text: "コーチング予約機能は準備中です。" }],
+      { accessToken: context.channelAccessToken }
+    )
+  }
+}
+
+// 予約確認
+async function handleBookingConfirm(
+  event: WebhookEvent,
+  context: WebhookContext
+): Promise<void> {
+  if (event.replyToken) {
+    await replyMessage(
+      event.replyToken,
+      [{ type: "text", text: "予約確認機能は準備中です。" }],
+      { accessToken: context.channelAccessToken }
+    )
+  }
+}
+
+// 予約キャンセル
+async function handleBookingCancel(
+  event: WebhookEvent,
+  context: WebhookContext
+): Promise<void> {
+  if (event.replyToken) {
+    await replyMessage(
+      event.replyToken,
+      [{ type: "text", text: "予約キャンセル機能は準備中です。" }],
+      { accessToken: context.channelAccessToken }
+    )
+  }
+}
+
+// Postbackイベント
+async function handlePostback(
+  event: WebhookEvent,
+  context: WebhookContext
+): Promise<void> {
+  const supabase = createAdminClient()
+  const data = event.postback?.data
+  if (!data) return
+
+  const params = new URLSearchParams(data)
+  const action = params.get("action")
+
+  await supabase.from("message_logs").insert({
+    organization_id: context.organizationId,
+    line_user_id: event.source.userId,
+    event_type: "postback",
+    content: data,
+    raw_event: JSON.parse(JSON.stringify(event)),
+  })
+
+  switch (action) {
+    case "apply_seminar":
+      // セミナー申込処理
+      break
+    case "cancel_seminar":
+      // キャンセル処理
+      break
+    case "omiai_result":
+      // お見合い結果処理
+      break
+    case "booking_reserve":
+      // 予約確定処理
+      break
+    case "booking_cancel":
+      // 予約キャンセル処理
+      break
+    default:
+      break
+  }
+}
