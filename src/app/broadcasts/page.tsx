@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
+import { useAccentColor } from "@/hooks/use-accent-color"
 import { AppLayout } from "@/components/layout/app-layout"
 import { PageHeader } from "@/components/layout/page-header"
 import { Button } from "@/components/ui/button"
@@ -115,6 +116,7 @@ const TARGET_TYPE_LABELS: Record<string, string> = {
 const MAX_MESSAGE_LENGTH = 5000
 
 export default function BroadcastsPage() {
+  const accentColor = useAccentColor()
   const [activeTab, setActiveTab] = useState("create")
 
   // Create form state
@@ -426,6 +428,8 @@ export default function BroadcastsPage() {
                 <Button
                   onClick={() => setConfirmOpen(true)}
                   disabled={!canSend}
+                  style={{ backgroundColor: accentColor }}
+                  className="text-white hover:opacity-90"
                 >
                   <Send className="h-4 w-4 mr-2" />
                   配信する
@@ -542,7 +546,7 @@ export default function BroadcastsPage() {
             >
               キャンセル
             </Button>
-            <Button onClick={handleSend} disabled={sending}>
+            <Button onClick={handleSend} disabled={sending} style={{ backgroundColor: accentColor }} className="text-white hover:opacity-90">
               {sending ? (
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
               ) : (

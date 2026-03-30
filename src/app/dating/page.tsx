@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
+import { useAccentColor } from "@/hooks/use-accent-color"
 import { AppLayout } from "@/components/layout/app-layout"
 import { PageHeader } from "@/components/layout/page-header"
 import { Button } from "@/components/ui/button"
@@ -82,6 +83,7 @@ function calcDaysElapsed(startDate: string): number {
 // ── Main Page Component ────────────────────────────────────────────────
 
 export default function DatingPage() {
+  const accentColor = useAccentColor()
   const [records, setRecords] = useState<Dating[]>([])
   const [loading, setLoading] = useState(true)
   const [statusFilter, setStatusFilter] = useState<DatingStatus>("all")
@@ -179,7 +181,7 @@ export default function DatingPage() {
             <DialogTrigger asChild>
               <Button
                 size="sm"
-                style={{ backgroundColor: "#EC4899" }}
+                style={{ backgroundColor: accentColor }}
                 className="text-white hover:opacity-90"
               >
                 <PlusIcon />
@@ -259,7 +261,7 @@ export default function DatingPage() {
                 <Button
                   onClick={handleAdd}
                   disabled={addLoading}
-                  style={{ backgroundColor: "#EC4899" }}
+                  style={{ backgroundColor: accentColor }}
                   className="text-white hover:opacity-90"
                 >
                   {addLoading ? "登録中..." : "登録する"}
@@ -319,7 +321,7 @@ export default function DatingPage() {
               <Card
                 key={record.id}
                 className="relative overflow-hidden"
-                style={{ borderTopColor: "#EC4899", borderTopWidth: "3px" }}
+                style={{ borderTopColor: accentColor, borderTopWidth: "3px" }}
               >
                 <CardContent className="p-5">
                   {/* Couple names */}

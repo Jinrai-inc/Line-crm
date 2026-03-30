@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
+import { useAccentColor } from "@/hooks/use-accent-color"
 import { AppLayout } from "@/components/layout/app-layout"
 import { PageHeader } from "@/components/layout/page-header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -47,6 +48,7 @@ const statusVariants: Record<string, "default" | "secondary" | "destructive" | "
 }
 
 export default function SeminarsPage() {
+  const accentColor = useAccentColor()
   const router = useRouter()
   const [seminars, setSeminars] = useState<Seminar[]>([])
   const [loading, setLoading] = useState(true)
@@ -84,7 +86,7 @@ export default function SeminarsPage() {
         title="セミナー管理"
         description="セミナーの作成・管理を行います"
         action={
-          <Button onClick={() => router.push("/seminars/new")}>
+          <Button onClick={() => router.push("/seminars/new")} style={{ backgroundColor: accentColor }} className="text-white hover:opacity-90">
             <Plus className="h-4 w-4 mr-2" />
             セミナー作成
           </Button>

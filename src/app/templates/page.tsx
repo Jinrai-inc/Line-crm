@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
+import { useAccentColor } from "@/hooks/use-accent-color"
 import { AppLayout } from "@/components/layout/app-layout"
 import { PageHeader } from "@/components/layout/page-header"
 import { Button } from "@/components/ui/button"
@@ -100,6 +101,7 @@ function getContentPreview(template: TemplateData): string {
 }
 
 export default function TemplatesPage() {
+  const accentColor = useAccentColor()
   const [templates, setTemplates] = useState<TemplateData[]>([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
@@ -280,7 +282,7 @@ export default function TemplatesPage() {
         title="メッセージテンプレート"
         description="LINE配信用のメッセージテンプレートを管理します"
         action={
-          <Button onClick={openCreateDialog}>
+          <Button onClick={openCreateDialog} style={{ backgroundColor: accentColor }} className="text-white hover:opacity-90">
             <Plus className="h-4 w-4 mr-2" />
             新規テンプレート
           </Button>
@@ -553,6 +555,8 @@ export default function TemplatesPage() {
             <Button
               onClick={handleSave}
               disabled={!formName.trim() || saving}
+              style={{ backgroundColor: accentColor }}
+              className="text-white hover:opacity-90"
             >
               {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               {editingTemplate ? "保存" : "作成"}

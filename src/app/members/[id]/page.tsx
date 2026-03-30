@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react"
 import { useParams } from "next/navigation"
 import Link from "next/link"
+import { useAccentColor } from "@/hooks/use-accent-color"
 import { AppLayout } from "@/components/layout/app-layout"
 import { PageHeader } from "@/components/layout/page-header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -107,6 +108,7 @@ const STATUS_CONFIG: Record<
 // ── Main Component ─────────────────────────────────────────────────────
 
 export default function MemberDetailPage() {
+  const accentColor = useAccentColor()
   const params = useParams<{ id: string }>()
   const memberId = params.id
 
@@ -259,7 +261,7 @@ export default function MemberDetailPage() {
             <Button
               size="sm"
               onClick={openEdit}
-              style={{ backgroundColor: "#EC4899" }}
+              style={{ backgroundColor: accentColor }}
               className="text-white hover:opacity-90"
             >
               <Pencil className="size-4" />
@@ -270,7 +272,7 @@ export default function MemberDetailPage() {
       />
 
       {/* ── Profile Card ────────────────────────────────────────── */}
-      <Card className="mb-6" style={{ borderTopColor: "#EC4899", borderTopWidth: "3px" }}>
+      <Card className="mb-6" style={{ borderTopColor: accentColor, borderTopWidth: "3px" }}>
         <CardContent className="p-6">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
             <div>
@@ -544,7 +546,7 @@ export default function MemberDetailPage() {
             <Button
               onClick={handleEdit}
               disabled={editLoading}
-              style={{ backgroundColor: "#EC4899" }}
+              style={{ backgroundColor: accentColor }}
               className="text-white hover:opacity-90"
             >
               {editLoading ? "保存中..." : "保存する"}

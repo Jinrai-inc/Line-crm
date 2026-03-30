@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
+import { useAccentColor } from "@/hooks/use-accent-color"
 import { AppLayout } from "@/components/layout/app-layout"
 import { PageHeader } from "@/components/layout/page-header"
 import { Button } from "@/components/ui/button"
@@ -132,6 +133,7 @@ function getFriendName(friend: Friend): string {
 // --- Main Component ---
 
 export default function AttendancesPage() {
+  const accentColor = useAccentColor()
   const [seminars, setSeminars] = useState<Seminar[]>([])
   const [selectedSeminarId, setSelectedSeminarId] = useState<string>("")
   const [selectedSeminarTitle, setSelectedSeminarTitle] = useState<string>("")
@@ -302,7 +304,7 @@ export default function AttendancesPage() {
         action={
           <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
             <DialogTrigger asChild>
-              <Button>
+              <Button style={{ backgroundColor: accentColor }} className="text-white hover:opacity-90">
                 <Plus className="h-4 w-4 mr-2" />
                 参加登録
               </Button>
@@ -369,6 +371,8 @@ export default function AttendancesPage() {
                 <Button
                   onClick={handleAdd}
                   disabled={!addFriendId || !addSeminarId || addLoading}
+                  style={{ backgroundColor: accentColor }}
+                  className="text-white hover:opacity-90"
                 >
                   {addLoading && (
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />

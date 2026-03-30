@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
+import { useAccentColor } from "@/hooks/use-accent-color"
 import { AppLayout } from "@/components/layout/app-layout"
 import { PageHeader } from "@/components/layout/page-header"
 import { Button } from "@/components/ui/button"
@@ -85,6 +86,7 @@ function getMemberName(member: Member): string {
 // ── Main Page Component ────────────────────────────────────────────────
 
 export default function OmiaiPage() {
+  const accentColor = useAccentColor()
   const [records, setRecords] = useState<Omiai[]>([])
   const [loading, setLoading] = useState(true)
   const [statusFilter, setStatusFilter] = useState<OmiaiStatus>("all")
@@ -182,7 +184,7 @@ export default function OmiaiPage() {
             <DialogTrigger asChild>
               <Button
                 size="sm"
-                style={{ backgroundColor: "#EC4899" }}
+                style={{ backgroundColor: accentColor }}
                 className="text-white hover:opacity-90"
               >
                 <PlusIcon />
@@ -272,7 +274,7 @@ export default function OmiaiPage() {
                 <Button
                   onClick={handleAdd}
                   disabled={addLoading}
-                  style={{ backgroundColor: "#EC4899" }}
+                  style={{ backgroundColor: accentColor }}
                   className="text-white hover:opacity-90"
                 >
                   {addLoading ? "登録中..." : "登録する"}

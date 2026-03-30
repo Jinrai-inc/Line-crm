@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react"
 import Link from "next/link"
+import { useAccentColor } from "@/hooks/use-accent-color"
 import { AppLayout } from "@/components/layout/app-layout"
 import { PageHeader } from "@/components/layout/page-header"
 import { Button } from "@/components/ui/button"
@@ -85,6 +86,7 @@ const LIMIT = 20
 // ── Main Page Component ────────────────────────────────────────────────
 
 export default function MembersPage() {
+  const accentColor = useAccentColor()
   const [members, setMembers] = useState<Member[]>([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
@@ -188,7 +190,7 @@ export default function MembersPage() {
             <DialogTrigger asChild>
               <Button
                 size="sm"
-                style={{ backgroundColor: "#EC4899" }}
+                style={{ backgroundColor: accentColor }}
                 className="text-white hover:opacity-90"
               >
                 <PlusIcon />
@@ -271,7 +273,7 @@ export default function MembersPage() {
                 <Button
                   onClick={handleAddMember}
                   disabled={addLoading}
-                  style={{ backgroundColor: "#EC4899" }}
+                  style={{ backgroundColor: accentColor }}
                   className="text-white hover:opacity-90"
                 >
                   {addLoading ? "追加中..." : "追加する"}
@@ -480,6 +482,7 @@ export default function MembersPage() {
                     variant={page === item ? "default" : "outline"}
                     size="icon"
                     className="size-8"
+                    style={page === item ? { backgroundColor: accentColor } : undefined}
                     onClick={() => setPage(item as number)}
                   >
                     {item}

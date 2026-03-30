@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react"
 import Link from "next/link"
+import { useAccentColor } from "@/hooks/use-accent-color"
 import { AppLayout } from "@/components/layout/app-layout"
 import { PageHeader } from "@/components/layout/page-header"
 import { Button } from "@/components/ui/button"
@@ -101,6 +102,7 @@ const LIMIT = 20
 // ── Main Page Component ────────────────────────────────────────────────
 
 export default function FriendsPage() {
+  const accentColor = useAccentColor()
   // Local state
   const [friends, setFriends] = useState<Friend[]>([])
   const [total, setTotal] = useState(0)
@@ -297,7 +299,7 @@ export default function FriendsPage() {
             </Button>
             <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
               <DialogTrigger asChild>
-                <Button size="sm">
+                <Button size="sm" style={{ backgroundColor: accentColor }} className="text-white hover:opacity-90">
                   <PlusIcon />
                   友だち追加
                 </Button>
@@ -337,7 +339,7 @@ export default function FriendsPage() {
                   <Button variant="outline" onClick={() => setAddDialogOpen(false)}>
                     キャンセル
                   </Button>
-                  <Button onClick={handleAddFriend} disabled={addLoading}>
+                  <Button onClick={handleAddFriend} disabled={addLoading} style={{ backgroundColor: accentColor }} className="text-white hover:opacity-90">
                     {addLoading ? "追加中..." : "追加する"}
                   </Button>
                 </DialogFooter>
@@ -440,7 +442,7 @@ export default function FriendsPage() {
                   <Button variant="outline" onClick={() => setBulkTagDialogOpen(false)}>
                     キャンセル
                   </Button>
-                  <Button onClick={handleBulkTagAssign} disabled={!bulkTagId}>
+                  <Button onClick={handleBulkTagAssign} disabled={!bulkTagId} style={{ backgroundColor: accentColor }} className="text-white hover:opacity-90">
                     設定する
                   </Button>
                 </DialogFooter>
@@ -734,6 +736,7 @@ export default function FriendsPage() {
                     variant={page === item ? "default" : "outline"}
                     size="icon"
                     className="size-8"
+                    style={page === item ? { backgroundColor: accentColor } : undefined}
                     onClick={() => setPage(item as number)}
                   >
                     {item}

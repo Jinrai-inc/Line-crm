@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
+import { useAccentColor } from "@/hooks/use-accent-color"
 import { AppLayout } from "@/components/layout/app-layout"
 import { PageHeader } from "@/components/layout/page-header"
 import { Button } from "@/components/ui/button"
@@ -65,6 +66,7 @@ const PAGE_SIZE = 20
 // ── Main Page Component ────────────────────────────────────────────────
 
 export default function PaymentsPage() {
+  const accentColor = useAccentColor()
   const [payments, setPayments] = useState<Payment[]>([])
   const [total, setTotal] = useState(0)
   const [totalPages, setTotalPages] = useState(1)
@@ -326,6 +328,7 @@ export default function PaymentsPage() {
                     variant={page === item ? "default" : "outline"}
                     size="icon"
                     className="size-8"
+                    style={page === item ? { backgroundColor: accentColor } : undefined}
                     onClick={() => setPage(item as number)}
                   >
                     {item}

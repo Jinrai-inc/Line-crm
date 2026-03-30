@@ -25,6 +25,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { formatDate, formatDateShort } from "@/lib/utils/date"
+import { useAccentColor } from "@/hooks/use-accent-color"
 import {
   PlusIcon,
   CalendarDays,
@@ -69,6 +70,7 @@ function getFriendName(friend: Friend): string {
 // ── Main Page Component ────────────────────────────────────────────────
 
 export default function CoachingPage() {
+  const accentColor = useAccentColor()
   const [records, setRecords] = useState<Coaching[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -189,7 +191,7 @@ export default function CoachingPage() {
               <DialogTrigger asChild>
                 <Button
                   size="sm"
-                  style={{ backgroundColor: "#EC4899" }}
+                  style={{ backgroundColor: accentColor }}
                   className="text-white hover:opacity-90"
                 >
                   <PlusIcon />
@@ -255,7 +257,7 @@ export default function CoachingPage() {
                   <Button
                     onClick={handleAdd}
                     disabled={addLoading}
-                    style={{ backgroundColor: "#EC4899" }}
+                    style={{ backgroundColor: accentColor }}
                     className="text-white hover:opacity-90"
                   >
                     {addLoading ? "登録中..." : "登録する"}
@@ -298,7 +300,7 @@ export default function CoachingPage() {
               <div className="flex items-center gap-2 mb-3">
                 <CalendarDays
                   className="size-4"
-                  style={{ color: "#EC4899" }}
+                  style={{ color: accentColor }}
                 />
                 <h3 className="font-semibold text-sm">
                   {formatDate(date)}
@@ -322,7 +324,7 @@ export default function CoachingPage() {
                             <div className="flex items-center gap-1 text-sm font-mono">
                               <ClockIcon
                                 className="size-3.5"
-                                style={{ color: "#EC4899" }}
+                                style={{ color: accentColor }}
                               />
                               {record.time.slice(0, 5)}
                             </div>

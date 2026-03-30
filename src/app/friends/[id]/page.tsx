@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react"
 import { useParams, useRouter } from "next/navigation"
+import { useAccentColor } from "@/hooks/use-accent-color"
 import { AppLayout } from "@/components/layout/app-layout"
 import { PageHeader } from "@/components/layout/page-header"
 import { Button } from "@/components/ui/button"
@@ -77,6 +78,7 @@ const attendanceStatusConfig: Record<string, { label: string; className: string 
 }
 
 export default function FriendDetailPage() {
+  const accentColor = useAccentColor()
   const params = useParams()
   const router = useRouter()
   const friendId = params.id as string
@@ -352,7 +354,8 @@ export default function FriendDetailPage() {
               <Button
                 onClick={handleSendMessage}
                 disabled={!message.trim() || sending || friend.status !== "active"}
-                className="bg-[#06C755] hover:bg-[#05a847] text-white"
+                style={{ backgroundColor: accentColor }}
+                className="text-white hover:opacity-90"
               >
                 {sending ? (
                   <Loader2 size={16} className="animate-spin" />

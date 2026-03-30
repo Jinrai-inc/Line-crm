@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
+import { useAccentColor } from "@/hooks/use-accent-color"
 import { AppLayout } from "@/components/layout/app-layout"
 import { PageHeader } from "@/components/layout/page-header"
 import { Button } from "@/components/ui/button"
@@ -51,6 +52,7 @@ const PRESET_COLORS = [
 ]
 
 export default function TagsPage() {
+  const accentColor = useAccentColor()
   const [tags, setTags] = useState<TagData[]>([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
@@ -195,7 +197,7 @@ export default function TagsPage() {
         title="タグ管理"
         description="友だちを分類するためのタグを管理します"
         action={
-          <Button onClick={openCreateDialog}>
+          <Button onClick={openCreateDialog} style={{ backgroundColor: accentColor }} className="text-white hover:opacity-90">
             <Plus className="h-4 w-4 mr-2" />
             新規タグ
           </Button>
@@ -329,6 +331,8 @@ export default function TagsPage() {
             <Button
               onClick={handleCreate}
               disabled={!formName.trim() || saving}
+              style={{ backgroundColor: accentColor }}
+              className="text-white hover:opacity-90"
             >
               {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               作成
@@ -375,7 +379,7 @@ export default function TagsPage() {
             >
               キャンセル
             </Button>
-            <Button onClick={handleEdit} disabled={!formName.trim() || saving}>
+            <Button onClick={handleEdit} disabled={!formName.trim() || saving} style={{ backgroundColor: accentColor }} className="text-white hover:opacity-90">
               {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               保存
             </Button>
