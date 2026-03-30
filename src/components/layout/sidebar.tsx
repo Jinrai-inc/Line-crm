@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import {
@@ -64,7 +64,7 @@ function NavLink({
     <Link
       href={item.href}
       onClick={onClick}
-      className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+      className={`flex items-center gap-3 px-3 py-2.5 md:py-2 rounded-lg text-sm font-medium transition-colors ${
         isActive
           ? "text-white"
           : "text-gray-400 hover:text-white hover:bg-gray-800"
@@ -90,28 +90,62 @@ export function Sidebar() {
   const otherModuleId = activeModule === "seminar" ? "marriage" : "seminar"
   const otherModule = modules[otherModuleId]
 
+  // Swipe-to-close gesture support
+  const touchStartX = useRef<number | null>(null)
+  const touchCurrentX = useRef<number | null>(null)
+  const sidebarRef = useRef<HTMLElement>(null)
+
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0].clientX
+    touchCurrentX.current = e.touches[0].clientX
+  }, [])
+
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    touchCurrentX.current = e.touches[0].clientX
+  }, [])
+
+  const handleTouchEnd = useCallback(() => {
+    if (touchStartX.current !== null && touchCurrentX.current !== null) {
+      const deltaX = touchCurrentX.current - touchStartX.current
+      // Swipe left to close (threshold of 80px)
+      if (deltaX < -80) {
+        setSidebarOpen(false)
+      }
+    }
+    touchStartX.current = null
+    touchCurrentX.current = null
+  }, [setSidebarOpen])
+
+  // Close sidebar on route change for mobile
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth >= 1024) return
+      setSidebarOpen(false)
+    }
+    // No-op: route changes already close via NavLink onClick
+    // Listen for orientation changes on mobile
+    window.addEventListener("orientationchange", handleResize)
+    return () => window.removeEventListener("orientationchange", handleResize)
+  }, [setSidebarOpen])
+
   return (
     <>
-      {/* Mobile overlay */}
+      {/* Mobile overlay with backdrop */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+          className="fixed inset-0 bg-black/50 z-40 lg:hidden backdrop-blur-sm"
           onClick={() => setSidebarOpen(false)}
+          aria-hidden="true"
         />
       )}
 
-      {/* Mobile hamburger button */}
-      <button
-        onClick={toggleSidebar}
-        className="fixed top-4 left-4 z-50 lg:hidden p-2 rounded-lg bg-gray-900 text-white shadow-lg"
-        aria-label="Toggle menu"
-      >
-        {sidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-      </button>
-
       {/* Sidebar */}
       <aside
-        className={`fixed top-0 left-0 z-40 h-full w-64 bg-gray-900 flex flex-col transition-transform duration-300 ${
+        ref={sidebarRef}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        className={`fixed top-0 left-0 z-40 h-full w-64 bg-gray-900 flex flex-col sidebar-transition ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
         } lg:translate-x-0 lg:static lg:z-auto`}
       >

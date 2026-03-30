@@ -174,3 +174,30 @@
 ::-webkit-scrollbar-thumb:hover {
   background: #9CA3AF;
 }
+
+/* Mobile responsive utilities */
+@media (max-width: 768px) {
+  .hide-on-mobile {
+    display: none !important;
+  }
+
+  .mobile-full-width {
+    width: 100% !important;
+  }
+
+  .mobile-stack {
+    flex-direction: column !important;
+  }
+}
+
+/* Print styles */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+}
+
+/* Smooth transitions */
+.sidebar-transition {
+  transition: transform 0.3s ease-in-out;
+}
