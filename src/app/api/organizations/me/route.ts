@@ -49,7 +49,17 @@ export async function PATCH(request: NextRequest) {
     const body = await request.json()
 
     // 許可されたフィールドのみ更新
-    const allowedFields = ["name", "product_tour_completed", "onboarding_completed"]
+    const allowedFields = [
+      "name",
+      "purpose",
+      "description",
+      "business_category",
+      "contact_email",
+      "contact_phone",
+      "enabled_modules",
+      "product_tour_completed",
+      "onboarding_completed",
+    ]
     const updateData: Record<string, unknown> = {}
     for (const field of allowedFields) {
       if (field in body) {

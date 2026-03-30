@@ -1,31 +1,43 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createServerSupabaseClient } from "@/lib/supabase/server"
+import type { SupabaseClient } from "@supabase/supabase-js"
 
-// LINE連携設定の取得
+type AuthResult =
+  | { ok: false; response: NextResponse }
+  | { ok: true; supabase: SupabaseClient; orgId: string }
+
+async function getAuthenticatedOrgId(): Promise<AuthResult> {
+  const supabase = await createServerSupabaseClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return { ok: false, response: NextResponse.json({ error: "未認証" }, { status: 401 }) }
+
+  const { data: userData } = await supabase
+    .from("users")
+    .select("organization_id")
+    .eq("id", user.id)
+    .single()
+  if (!userData) return { ok: false, response: NextResponse.json({ error: "ユーザー情報が見つかりません" }, { status: 404 }) }
+
+  return { ok: true, supabase, orgId: userData.organization_id! }
+}
+
+// LINE連携設定の取得（複数アカウント対応）
 export async function GET() {
   try {
-    const supabase = await createServerSupabaseClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return NextResponse.json({ error: "未認証" }, { status: 401 })
+    const auth = await getAuthenticatedOrgId()
+    if (!auth.ok) return auth.response
+    const { supabase, orgId } = auth
 
-    const { data: userData } = await supabase
-      .from("users")
-      .select("organization_id")
-      .eq("id", user.id)
-      .single()
-    if (!userData) return NextResponse.json({ error: "ユーザー情報が見つかりません" }, { status: 404 })
-    const orgId = userData.organization_id!
-
-    const { data: lineAccount } = await supabase
+    const { data: lineAccounts } = await supabase
       .from("line_accounts")
       .select("*")
       .eq("organization_id", orgId)
-      .single()
+      .order("created_at", { ascending: true })
 
     const webhookUrl = `${process.env.NEXT_PUBLIC_APP_URL}/api/webhook/line`
 
     return NextResponse.json({
-      lineAccount: lineAccount || null,
+      lineAccounts: lineAccounts || [],
       webhookUrl,
     })
   } catch (error) {
@@ -34,49 +46,48 @@ export async function GET() {
   }
 }
 
-// LINE連携設定の保存
+// LINE連携設定の保存（新規作成・更新対応）
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createServerSupabaseClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return NextResponse.json({ error: "未認証" }, { status: 401 })
-
-    const { data: userData } = await supabase
-      .from("users")
-      .select("organization_id")
-      .eq("id", user.id)
-      .single()
-    if (!userData) return NextResponse.json({ error: "ユーザー情報が見つかりません" }, { status: 404 })
-    const orgId = userData.organization_id!
+    const auth = await getAuthenticatedOrgId()
+    if (!auth.ok) return auth.response
+    const { supabase, orgId } = auth
 
     const body = await request.json()
-    const { channelName, channelId, channelSecret, channelAccessToken } = body
+    const { id, channelName, channelId, channelSecret, channelAccessToken, webhookActive } = body
 
     if (!channelName || !channelId || !channelSecret || !channelAccessToken) {
       return NextResponse.json({ error: "全ての項目を入力してください" }, { status: 400 })
     }
 
-    // 既存のline_accountがあればUPDATE、なければINSERT
-    const { data: existing } = await supabase
-      .from("line_accounts")
-      .select("id")
-      .eq("organization_id", orgId)
-      .single()
+    if (id) {
+      // 更新: 指定IDのアカウントが同じ組織に属しているか確認
+      const { data: existing } = await supabase
+        .from("line_accounts")
+        .select("id")
+        .eq("id", id)
+        .eq("organization_id", orgId)
+        .single()
 
-    if (existing) {
-      const { error } = await supabase
+      if (!existing) {
+        return NextResponse.json({ error: "アカウントが見つかりません" }, { status: 404 })
+      }
+
+      const { error: updateError } = await supabase
         .from("line_accounts")
         .update({
           channel_name: channelName,
           channel_id: channelId,
           channel_secret: channelSecret,
           channel_access_token: channelAccessToken,
+          webhook_active: webhookActive ?? true,
           updated_at: new Date().toISOString(),
         })
-        .eq("id", existing.id)
-      if (error) throw error
+        .eq("id", id)
+      if (updateError) throw updateError
     } else {
-      const { error } = await supabase
+      // 新規作成
+      const { error: insertError } = await supabase
         .from("line_accounts")
         .insert({
           organization_id: orgId,
@@ -84,8 +95,9 @@ export async function POST(request: NextRequest) {
           channel_id: channelId,
           channel_secret: channelSecret,
           channel_access_token: channelAccessToken,
+          webhook_active: webhookActive ?? true,
         })
-      if (error) throw error
+      if (insertError) throw insertError
     }
 
     // 「新規」タグがなければ自動作成
@@ -109,5 +121,45 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error("Settings POST error:", error)
     return NextResponse.json({ error: "設定の保存に失敗しました" }, { status: 500 })
+  }
+}
+
+// LINE連携設定の削除
+export async function DELETE(request: NextRequest) {
+  try {
+    const auth = await getAuthenticatedOrgId()
+    if (!auth.ok) return auth.response
+    const { supabase, orgId } = auth
+
+    const { searchParams } = new URL(request.url)
+    const id = searchParams.get("id")
+
+    if (!id) {
+      return NextResponse.json({ error: "アカウントIDが必要です" }, { status: 400 })
+    }
+
+    // 同じ組織に属しているか確認
+    const { data: existing } = await supabase
+      .from("line_accounts")
+      .select("id")
+      .eq("id", id)
+      .eq("organization_id", orgId)
+      .single()
+
+    if (!existing) {
+      return NextResponse.json({ error: "アカウントが見つかりません" }, { status: 404 })
+    }
+
+    const { error: deleteError } = await supabase
+      .from("line_accounts")
+      .delete()
+      .eq("id", id)
+
+    if (deleteError) throw deleteError
+
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    console.error("Settings DELETE error:", error)
+    return NextResponse.json({ error: "削除に失敗しました" }, { status: 500 })
   }
 }

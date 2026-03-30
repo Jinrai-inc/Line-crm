@@ -1,9 +1,24 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { AppLayout } from "@/components/layout/app-layout"
 import { ModuleAccentBar } from "@/components/layout/module-accent-bar"
 import { PageHeader } from "@/components/layout/page-header"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
+import { Switch } from "@/components/ui/switch"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import {
   Copy,
   Check,
@@ -12,7 +27,40 @@ import {
   CheckCircle,
   XCircle,
   AlertTriangle,
+  Plus,
+  Pencil,
+  Trash2,
+  Wifi,
+  WifiOff,
 } from "lucide-react"
+
+interface LineAccount {
+  id: string
+  channel_name: string
+  channel_id: string
+  channel_secret: string
+  channel_access_token: string
+  webhook_active?: boolean
+  created_at?: string
+  updated_at?: string
+}
+
+interface FormData {
+  id?: string
+  channelName: string
+  channelId: string
+  channelSecret: string
+  channelAccessToken: string
+  webhookActive: boolean
+}
+
+const emptyForm: FormData = {
+  channelName: "",
+  channelId: "",
+  channelSecret: "",
+  channelAccessToken: "",
+  webhookActive: true,
+}
 
 interface TestResult {
   status: "idle" | "testing" | "success" | "error"
@@ -21,10 +69,7 @@ interface TestResult {
 }
 
 export default function LineSettingsPage() {
-  const [channelName, setChannelName] = useState("")
-  const [channelId, setChannelId] = useState("")
-  const [channelSecret, setChannelSecret] = useState("")
-  const [channelAccessToken, setChannelAccessToken] = useState("")
+  const [accounts, setAccounts] = useState<LineAccount[]>([])
   const [webhookUrl, setWebhookUrl] = useState("")
   const [copied, setCopied] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -33,33 +78,44 @@ export default function LineSettingsPage() {
     type: "success" | "error"
     message: string
   } | null>(null)
-  const [testResult, setTestResult] = useState<TestResult>({ status: "idle" })
+
+  // Dialog state
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [dialogMode, setDialogMode] = useState<"add" | "edit">("add")
+  const [formData, setFormData] = useState<FormData>(emptyForm)
+
+  // Delete confirmation
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<LineAccount | null>(null)
+  const [deleting, setDeleting] = useState(false)
+
+  // Connection test per account
+  const [testResults, setTestResults] = useState<Record<string, TestResult>>({})
 
   // 初期データ取得
-  useEffect(() => {
-    async function fetchSettings() {
-      try {
-        const res = await fetch("/api/settings/line")
-        if (!res.ok) throw new Error("取得に失敗しました")
-        const data = await res.json()
-        if (data.lineAccount) {
-          setChannelName(data.lineAccount.channel_name || "")
-          setChannelId(data.lineAccount.channel_id || "")
-          setChannelSecret(data.lineAccount.channel_secret || "")
-          setChannelAccessToken(data.lineAccount.channel_access_token || "")
-        }
-        setWebhookUrl(data.webhookUrl || "")
-      } catch (error) {
-        console.error("設定の取得に失敗:", error)
-        setWebhookUrl(
-          `${process.env.NEXT_PUBLIC_APP_URL || window.location.origin}/api/webhook/line`
-        )
-      } finally {
-        setLoading(false)
-      }
+  const fetchAccounts = useCallback(async () => {
+    try {
+      const res = await fetch("/api/settings/line")
+      if (!res.ok) throw new Error("取得に失敗しました")
+      const data = await res.json()
+      setAccounts(data.lineAccounts || [])
+      setWebhookUrl(
+        data.webhookUrl ||
+          `${window.location.origin}/api/webhook/line`
+      )
+    } catch (error) {
+      console.error("設定の取得に失敗:", error)
+      setWebhookUrl(
+        `${process.env.NEXT_PUBLIC_APP_URL || window.location.origin}/api/webhook/line`
+      )
+    } finally {
+      setLoading(false)
     }
-    fetchSettings()
   }, [])
+
+  useEffect(() => {
+    fetchAccounts()
+  }, [fetchAccounts])
 
   // トースト自動消去
   useEffect(() => {
@@ -80,53 +136,64 @@ export default function LineSettingsPage() {
     }
   }
 
-  // 接続テスト
-  const handleTest = async () => {
-    setTestResult({ status: "testing" })
-    try {
-      const res = await fetch("/api/settings/line/test", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ channelAccessToken }),
-      })
-      const data = await res.json()
-      if (res.ok && data.success) {
-        setTestResult({
-          status: "success",
-          message: "接続に成功しました",
-          botName: data.botName,
-        })
-      } else {
-        setTestResult({
-          status: "error",
-          message: data.error || "接続テストに失敗しました",
-        })
-      }
-    } catch {
-      setTestResult({
-        status: "error",
-        message: "接続テストに失敗しました",
-      })
-    }
+  // ダイアログを開く（新規）
+  const openAddDialog = () => {
+    setFormData(emptyForm)
+    setDialogMode("add")
+    setDialogOpen(true)
+  }
+
+  // ダイアログを開く（編集）
+  const openEditDialog = (account: LineAccount) => {
+    setFormData({
+      id: account.id,
+      channelName: account.channel_name,
+      channelId: account.channel_id,
+      channelSecret: account.channel_secret,
+      channelAccessToken: account.channel_access_token,
+      webhookActive: account.webhook_active ?? true,
+    })
+    setDialogMode("edit")
+    setDialogOpen(true)
   }
 
   // 保存
   const handleSave = async () => {
+    if (
+      !formData.channelName ||
+      !formData.channelId ||
+      !formData.channelSecret ||
+      !formData.channelAccessToken
+    ) {
+      setToast({ type: "error", message: "全ての項目を入力してください" })
+      return
+    }
+
     setSaving(true)
     try {
       const res = await fetch("/api/settings/line", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          channelName,
-          channelId,
-          channelSecret,
-          channelAccessToken,
+          id: formData.id,
+          channelName: formData.channelName,
+          channelId: formData.channelId,
+          channelSecret: formData.channelSecret,
+          channelAccessToken: formData.channelAccessToken,
+          webhookActive: formData.webhookActive,
         }),
       })
       const data = await res.json()
       if (res.ok && data.success) {
-        setToast({ type: "success", message: "LINE連携設定を保存しました" })
+        setToast({
+          type: "success",
+          message:
+            dialogMode === "add"
+              ? "LINEアカウントを追加しました"
+              : "LINEアカウント設定を更新しました",
+        })
+        setDialogOpen(false)
+        await fetchAccounts()
       } else {
         setToast({
           type: "error",
@@ -140,11 +207,128 @@ export default function LineSettingsPage() {
     }
   }
 
+  // 削除確認ダイアログを開く
+  const openDeleteDialog = (account: LineAccount) => {
+    setDeleteTarget(account)
+    setDeleteDialogOpen(true)
+  }
+
+  // 削除実行
+  const handleDelete = async () => {
+    if (!deleteTarget) return
+    setDeleting(true)
+    try {
+      const res = await fetch(
+        `/api/settings/line?id=${encodeURIComponent(deleteTarget.id)}`,
+        { method: "DELETE" }
+      )
+      const data = await res.json()
+      if (res.ok && data.success) {
+        setToast({ type: "success", message: "LINEアカウントを削除しました" })
+        setDeleteDialogOpen(false)
+        setDeleteTarget(null)
+        await fetchAccounts()
+      } else {
+        setToast({
+          type: "error",
+          message: data.error || "削除に失敗しました",
+        })
+      }
+    } catch {
+      setToast({ type: "error", message: "削除に失敗しました" })
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  // 接続テスト
+  const handleTest = async (account: LineAccount) => {
+    setTestResults((prev) => ({
+      ...prev,
+      [account.id]: { status: "testing" },
+    }))
+    try {
+      const res = await fetch("/api/settings/line/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          channelAccessToken: account.channel_access_token,
+        }),
+      })
+      const data = await res.json()
+      if (res.ok && data.success) {
+        setTestResults((prev) => ({
+          ...prev,
+          [account.id]: {
+            status: "success",
+            message: "接続に成功しました",
+            botName: data.botName,
+          },
+        }))
+      } else {
+        setTestResults((prev) => ({
+          ...prev,
+          [account.id]: {
+            status: "error",
+            message: data.error || "接続テストに失敗しました",
+          },
+        }))
+      }
+    } catch {
+      setTestResults((prev) => ({
+        ...prev,
+        [account.id]: {
+          status: "error",
+          message: "接続テストに失敗しました",
+        },
+      }))
+    }
+  }
+
+  // Webhook Active トグル
+  const handleToggleWebhook = async (account: LineAccount) => {
+    const newActive = !(account.webhook_active ?? true)
+    try {
+      const res = await fetch("/api/settings/line", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: account.id,
+          channelName: account.channel_name,
+          channelId: account.channel_id,
+          channelSecret: account.channel_secret,
+          channelAccessToken: account.channel_access_token,
+          webhookActive: newActive,
+        }),
+      })
+      const data = await res.json()
+      if (res.ok && data.success) {
+        setToast({
+          type: "success",
+          message: newActive
+            ? "Webhookを有効にしました"
+            : "Webhookを無効にしました",
+        })
+        await fetchAccounts()
+      } else {
+        setToast({
+          type: "error",
+          message: data.error || "更新に失敗しました",
+        })
+      }
+    } catch {
+      setToast({ type: "error", message: "更新に失敗しました" })
+    }
+  }
+
   if (loading) {
     return (
       <AppLayout>
         <ModuleAccentBar />
-        <PageHeader title="LINE連携設定" description="LINE公式アカウントとの連携を設定します" />
+        <PageHeader
+          title="LINE連携設定"
+          description="LINE公式アカウントとの連携を設定します"
+        />
         <div className="flex items-center justify-center py-20">
           <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
         </div>
@@ -155,27 +339,34 @@ export default function LineSettingsPage() {
   return (
     <AppLayout>
       <ModuleAccentBar />
-      <PageHeader title="LINE連携設定" description="LINE公式アカウントとの連携を設定します" />
+      <PageHeader
+        title="LINE連携設定"
+        description="LINE公式アカウントとの連携を設定します"
+      />
 
-      <div className="max-w-2xl space-y-6">
+      <div className="max-w-4xl space-y-6">
         {/* Webhook URL インフォカード */}
         <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
           <div className="flex items-start gap-3">
-            <AlertTriangle className="mt-0.5 h-5 w-5 text-blue-600 shrink-0" />
-            <div className="flex-1 min-w-0">
+            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-blue-600" />
+            <div className="min-w-0 flex-1">
               <h3 className="text-sm font-semibold text-blue-900">
                 Webhook URL
               </h3>
               <p className="mt-1 text-xs text-blue-700">
-                LINE Developersコンソールの「Webhook URL」に以下のURLを設定してください。
+                LINE
+                Developersコンソールの「Webhook
+                URL」に以下のURLを設定してください。
               </p>
               <div className="mt-2 flex items-center gap-2">
-                <code className="flex-1 min-w-0 truncate rounded bg-white px-3 py-1.5 text-sm text-blue-900 border border-blue-200">
+                <code className="min-w-0 flex-1 truncate rounded border border-blue-200 bg-white px-3 py-1.5 text-sm text-blue-900">
                   {webhookUrl}
                 </code>
-                <button
+                <Button
+                  variant="outline"
+                  size="sm"
                   onClick={handleCopyWebhookUrl}
-                  className="shrink-0 inline-flex items-center gap-1 rounded-md bg-white border border-blue-200 px-3 py-1.5 text-sm font-medium text-blue-700 hover:bg-blue-100 transition-colors"
+                  className="shrink-0 border-blue-200 text-blue-700 hover:bg-blue-100"
                 >
                   {copied ? (
                     <>
@@ -188,13 +379,13 @@ export default function LineSettingsPage() {
                       コピー
                     </>
                   )}
-                </button>
+                </Button>
               </div>
               <a
                 href="https://developers.line.biz/console/"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="mt-2 inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 underline"
+                className="mt-2 inline-flex items-center gap-1 text-xs text-blue-600 underline hover:text-blue-800"
               >
                 LINE Developersコンソールを開く
                 <ExternalLink className="h-3 w-3" />
@@ -203,154 +394,314 @@ export default function LineSettingsPage() {
           </div>
         </div>
 
-        {/* フォームカード */}
-        <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">
-            チャネル情報
+        {/* ヘッダー行: タイトル + 追加ボタン */}
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-gray-900">
+            登録済みアカウント
+            {accounts.length > 0 && (
+              <span className="ml-2 text-sm font-normal text-gray-500">
+                ({accounts.length}件)
+              </span>
+            )}
           </h2>
+          <Button onClick={openAddDialog}>
+            <Plus className="h-4 w-4" />
+            アカウントを追加
+          </Button>
+        </div>
+
+        {/* アカウント一覧 */}
+        {accounts.length === 0 ? (
+          <Card>
+            <CardContent className="flex flex-col items-center justify-center py-12">
+              <div
+                className="mb-4 flex h-12 w-12 items-center justify-center rounded-full"
+                style={{ backgroundColor: "#06C75520" }}
+              >
+                <Plus className="h-6 w-6" style={{ color: "#06C755" }} />
+              </div>
+              <p className="text-sm font-medium text-gray-900">
+                LINEアカウントが登録されていません
+              </p>
+              <p className="mt-1 text-sm text-gray-500">
+                「アカウントを追加」ボタンからLINE公式アカウントを登録してください。
+              </p>
+            </CardContent>
+          </Card>
+        ) : (
           <div className="space-y-4">
-            {/* チャネル名 */}
-            <div>
-              <label
-                htmlFor="channelName"
-                className="block text-sm font-medium text-gray-700 mb-1"
-              >
-                チャネル名
-              </label>
-              <input
-                id="channelName"
-                type="text"
-                value={channelName}
-                onChange={(e) => setChannelName(e.target.value)}
+            {accounts.map((account) => {
+              const testResult = testResults[account.id] || {
+                status: "idle",
+              }
+              const isWebhookActive = account.webhook_active ?? true
+
+              return (
+                <Card key={account.id} className="overflow-hidden">
+                  {/* LINE green accent top border */}
+                  <div className="h-1" style={{ backgroundColor: "#06C755" }} />
+                  <CardHeader className="pb-3">
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-center gap-3">
+                        <CardTitle className="text-base">
+                          {account.channel_name}
+                        </CardTitle>
+                        <Badge
+                          variant={isWebhookActive ? "default" : "secondary"}
+                          className="text-xs"
+                        >
+                          {isWebhookActive ? "有効" : "無効"}
+                        </Badge>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => openEditDialog(account)}
+                          title="編集"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => openDeleteDialog(account)}
+                          title="削除"
+                          className="text-red-500 hover:bg-red-50 hover:text-red-600"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {/* アカウント情報 */}
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                      <div>
+                        <p className="text-xs font-medium text-gray-500">
+                          チャネルID
+                        </p>
+                        <p className="mt-0.5 text-sm font-mono text-gray-900">
+                          {account.channel_id}
+                        </p>
+                      </div>
+                      <div className="flex items-center justify-between sm:justify-start sm:gap-6">
+                        <div>
+                          <p className="text-xs font-medium text-gray-500">
+                            Webhook
+                          </p>
+                          <div className="mt-0.5 flex items-center gap-2">
+                            {isWebhookActive ? (
+                              <Wifi
+                                className="h-4 w-4"
+                                style={{ color: "#06C755" }}
+                              />
+                            ) : (
+                              <WifiOff className="h-4 w-4 text-gray-400" />
+                            )}
+                            <span className="text-sm text-gray-900">
+                              {isWebhookActive ? "受信中" : "停止中"}
+                            </span>
+                          </div>
+                        </div>
+                        <Switch
+                          checked={isWebhookActive}
+                          onCheckedChange={() =>
+                            handleToggleWebhook(account)
+                          }
+                        />
+                      </div>
+                    </div>
+
+                    {/* 接続テスト */}
+                    <div className="flex items-center gap-3 border-t border-gray-100 pt-3">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleTest(account)}
+                        disabled={testResult.status === "testing"}
+                      >
+                        {testResult.status === "testing" ? (
+                          <>
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            テスト中...
+                          </>
+                        ) : (
+                          "接続テスト"
+                        )}
+                      </Button>
+
+                      {testResult.status === "success" && (
+                        <div className="flex items-center gap-2 text-sm text-green-700">
+                          <CheckCircle className="h-4 w-4" />
+                          <span>
+                            {testResult.message}
+                            {testResult.botName && (
+                              <span className="ml-1 font-semibold">
+                                (Bot名: {testResult.botName})
+                              </span>
+                            )}
+                          </span>
+                        </div>
+                      )}
+                      {testResult.status === "error" && (
+                        <div className="flex items-center gap-2 text-sm text-red-700">
+                          <XCircle className="h-4 w-4" />
+                          <span>{testResult.message}</span>
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              )
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* 追加・編集ダイアログ */}
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>
+              {dialogMode === "add"
+                ? "LINEアカウントを追加"
+                : "LINEアカウントを編集"}
+            </DialogTitle>
+            <DialogDescription>
+              {dialogMode === "add"
+                ? "LINE Developersコンソールから取得した情報を入力してください。"
+                : "アカウント情報を更新します。"}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="dialog-channelName">チャネル名</Label>
+              <Input
+                id="dialog-channelName"
+                value={formData.channelName}
+                onChange={(e) =>
+                  setFormData({ ...formData, channelName: e.target.value })
+                }
                 placeholder="例: マイLINE公式アカウント"
-                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-green-500 focus:ring-1 focus:ring-green-500 outline-none"
               />
             </div>
-
-            {/* チャネルID */}
-            <div>
-              <label
-                htmlFor="channelId"
-                className="block text-sm font-medium text-gray-700 mb-1"
-              >
-                チャネルID
-              </label>
-              <input
-                id="channelId"
-                type="text"
-                value={channelId}
-                onChange={(e) => setChannelId(e.target.value)}
+            <div className="space-y-2">
+              <Label htmlFor="dialog-channelId">チャネルID</Label>
+              <Input
+                id="dialog-channelId"
+                value={formData.channelId}
+                onChange={(e) =>
+                  setFormData({ ...formData, channelId: e.target.value })
+                }
                 placeholder="例: 1234567890"
-                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-green-500 focus:ring-1 focus:ring-green-500 outline-none"
               />
             </div>
-
-            {/* チャネルシークレット */}
-            <div>
-              <label
-                htmlFor="channelSecret"
-                className="block text-sm font-medium text-gray-700 mb-1"
-              >
-                チャネルシークレット
-              </label>
-              <input
-                id="channelSecret"
+            <div className="space-y-2">
+              <Label htmlFor="dialog-channelSecret">チャネルシークレット</Label>
+              <Input
+                id="dialog-channelSecret"
                 type="password"
-                value={channelSecret}
-                onChange={(e) => setChannelSecret(e.target.value)}
+                value={formData.channelSecret}
+                onChange={(e) =>
+                  setFormData({ ...formData, channelSecret: e.target.value })
+                }
                 placeholder="チャネルシークレットを入力"
-                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-green-500 focus:ring-1 focus:ring-green-500 outline-none"
               />
             </div>
-
-            {/* チャネルアクセストークン */}
-            <div>
-              <label
-                htmlFor="channelAccessToken"
-                className="block text-sm font-medium text-gray-700 mb-1"
-              >
+            <div className="space-y-2">
+              <Label htmlFor="dialog-channelAccessToken">
                 チャネルアクセストークン
-              </label>
-              <textarea
-                id="channelAccessToken"
-                value={channelAccessToken}
-                onChange={(e) => setChannelAccessToken(e.target.value)}
+              </Label>
+              <Textarea
+                id="dialog-channelAccessToken"
+                value={formData.channelAccessToken}
+                onChange={(e) =>
+                  setFormData({
+                    ...formData,
+                    channelAccessToken: e.target.value,
+                  })
+                }
                 placeholder="チャネルアクセストークン（長期）を入力"
                 rows={3}
-                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-green-500 focus:ring-1 focus:ring-green-500 outline-none resize-none"
+                className="resize-none"
+              />
+            </div>
+            <div className="flex items-center justify-between rounded-lg border border-gray-200 p-3">
+              <div>
+                <p className="text-sm font-medium text-gray-900">
+                  Webhook受信
+                </p>
+                <p className="text-xs text-gray-500">
+                  このアカウントでWebhookを受信します
+                </p>
+              </div>
+              <Switch
+                checked={formData.webhookActive}
+                onCheckedChange={(checked) =>
+                  setFormData({ ...formData, webhookActive: checked })
+                }
               />
             </div>
           </div>
-
-          {/* 接続テスト */}
-          <div className="mt-6 border-t border-gray-100 pt-4">
-            <div className="flex items-center gap-3">
-              <button
-                onClick={handleTest}
-                disabled={!channelAccessToken || testResult.status === "testing"}
-                className="inline-flex items-center gap-2 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                {testResult.status === "testing" ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    テスト中...
-                  </>
-                ) : (
-                  "接続テスト"
-                )}
-              </button>
-
-              {/* テスト結果のインライン表示 */}
-              {testResult.status === "success" && (
-                <div className="flex items-center gap-2 text-sm text-green-700">
-                  <CheckCircle className="h-4 w-4" />
-                  <span>
-                    {testResult.message}
-                    {testResult.botName && (
-                      <span className="font-semibold ml-1">
-                        (Bot名: {testResult.botName})
-                      </span>
-                    )}
-                  </span>
-                </div>
-              )}
-              {testResult.status === "error" && (
-                <div className="flex items-center gap-2 text-sm text-red-700">
-                  <XCircle className="h-4 w-4" />
-                  <span>{testResult.message}</span>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* 保存ボタン */}
-          <div className="mt-6 flex justify-end">
-            <button
-              onClick={handleSave}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setDialogOpen(false)}
               disabled={saving}
-              className="inline-flex items-center gap-2 rounded-md px-6 py-2.5 text-sm font-medium text-white shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              style={{ backgroundColor: "#06C755" }}
-              onMouseEnter={(e) =>
-                !saving &&
-                ((e.currentTarget.style.backgroundColor = "#04A847"))
-              }
-              onMouseLeave={(e) =>
-                !saving &&
-                ((e.currentTarget.style.backgroundColor = "#06C755"))
-              }
             >
+              キャンセル
+            </Button>
+            <Button onClick={handleSave} disabled={saving}>
               {saving ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
                   保存中...
                 </>
+              ) : dialogMode === "add" ? (
+                "追加"
               ) : (
-                "保存"
+                "更新"
               )}
-            </button>
-          </div>
-        </div>
-      </div>
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 削除確認ダイアログ */}
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>アカウントの削除</DialogTitle>
+            <DialogDescription>
+              「{deleteTarget?.channel_name}」を削除しますか？この操作は取り消せません。
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setDeleteDialogOpen(false)}
+              disabled={deleting}
+            >
+              キャンセル
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDelete}
+              disabled={deleting}
+            >
+              {deleting ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  削除中...
+                </>
+              ) : (
+                "削除する"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* トースト通知 */}
       {toast && (
