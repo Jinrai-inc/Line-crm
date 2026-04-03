@@ -1,7 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/server"
 import { getProfile, replyMessage } from "./client"
 import { createWelcomeMessage, createDefaultReply } from "./messages"
-import { createSeminarListMessage, createFollowupResponseMessage } from "./flex-templates"
+import { createSeminarListMessage, createApplyConfirmMessage, createFollowupResponseMessage } from "./flex-templates"
 
 // Webhookイベントの簡易型（LINEから受信するrawデータ）
 interface WebhookEvent {
@@ -418,9 +418,105 @@ async function handlePostback(
   })
 
   switch (action) {
-    case "apply_seminar":
-      // セミナー申込処理
+    case "apply_seminar": {
+      const seminarId = params.get("seminar_id")
+      const userId = event.source.userId
+      if (!seminarId || !userId) break
+
+      // 友だちを取得
+      const { data: friend } = await supabase
+        .from("friends")
+        .select("id")
+        .eq("line_user_id", userId)
+        .eq("organization_id", context.organizationId)
+        .single()
+
+      if (!friend) break
+
+      // 既に申込済みか確認
+      const { data: existing } = await supabase
+        .from("attendances")
+        .select("id, status")
+        .eq("friend_id", friend.id)
+        .eq("seminar_id", seminarId)
+        .single()
+
+      if (existing && existing.status !== "cancelled") {
+        if (event.replyToken) {
+          await replyMessage(
+            event.replyToken,
+            [{ type: "text", text: "すでにお申込み済みです。" }],
+            { accessToken: context.channelAccessToken }
+          )
+        }
+        break
+      }
+
+      // セミナー情報取得
+      const { data: seminar } = await supabase
+        .from("seminars")
+        .select("*")
+        .eq("id", seminarId)
+        .single()
+
+      if (!seminar) break
+
+      // 定員チェック
+      const { count: currentCount } = await supabase
+        .from("attendances")
+        .select("*", { count: "exact", head: true })
+        .eq("seminar_id", seminarId)
+        .neq("status", "cancelled")
+
+      if (seminar.capacity > 0 && (currentCount || 0) >= seminar.capacity) {
+        if (event.replyToken) {
+          await replyMessage(
+            event.replyToken,
+            [{ type: "text", text: "申し訳ございません。定員に達したため、お申込みを受け付けることができません。" }],
+            { accessToken: context.channelAccessToken }
+          )
+        }
+        break
+      }
+
+      // 出席レコード作成（キャンセル済みの場合はupsert）
+      if (existing && existing.status === "cancelled") {
+        await supabase
+          .from("attendances")
+          .update({ status: "applied", applied_at: new Date().toISOString(), cancelled_at: null, cancel_reason: null })
+          .eq("id", existing.id)
+      } else {
+        await supabase
+          .from("attendances")
+          .insert({
+            organization_id: context.organizationId,
+            friend_id: friend.id,
+            seminar_id: seminarId,
+            status: "applied",
+            applied_at: new Date().toISOString(),
+          })
+      }
+
+      // 申込確認メッセージ送信
+      if (event.replyToken) {
+        const confirmMsg = createApplyConfirmMessage({
+          id: seminar.id,
+          title: seminar.title,
+          eventDate: seminar.event_date,
+          startTime: seminar.start_time ?? undefined,
+          endTime: seminar.end_time ?? undefined,
+          location: seminar.location ?? undefined,
+          capacity: seminar.capacity,
+          attendeeCount: (currentCount || 0) + 1,
+        })
+        await replyMessage(
+          event.replyToken,
+          [confirmMsg],
+          { accessToken: context.channelAccessToken }
+        )
+      }
       break
+    }
     case "cancel_seminar":
       // キャンセル処理
       break

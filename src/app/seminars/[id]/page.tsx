@@ -44,6 +44,7 @@ import {
   Search,
   Loader2,
   MessageSquare,
+  Send,
 } from "lucide-react"
 
 interface Friend {
@@ -111,10 +112,17 @@ export default function SeminarDetailPage() {
   const [loading, setLoading] = useState(true)
   const [editOpen, setEditOpen] = useState(false)
   const [addAttendeeOpen, setAddAttendeeOpen] = useState(false)
+  const [inviteOpen, setInviteOpen] = useState(false)
   const [friendSearch, setFriendSearch] = useState("")
   const [friendResults, setFriendResults] = useState<Friend[]>([])
   const [searchingFriends, setSearchingFriends] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [inviteSearch, setInviteSearch] = useState("")
+  const [inviteResults, setInviteResults] = useState<Friend[]>([])
+  const [searchingInvite, setSearchingInvite] = useState(false)
+  const [selectedInvitees, setSelectedInvitees] = useState<Friend[]>([])
+  const [sending, setSending] = useState(false)
+  const [sendResult, setSendResult] = useState<string | null>(null)
 
   // 編集フォーム
   const [editForm, setEditForm] = useState({
@@ -247,6 +255,58 @@ export default function SeminarDetailPage() {
     }
   }
 
+  async function searchInviteFriends(query: string) {
+    setInviteSearch(query)
+    if (query.length < 1) {
+      setInviteResults([])
+      return
+    }
+    try {
+      setSearchingInvite(true)
+      const res = await fetch(`/api/friends?search=${encodeURIComponent(query)}`)
+      const json = await res.json()
+      setInviteResults(json.data ?? [])
+    } catch {
+      console.error("友だち検索に失敗しました")
+    } finally {
+      setSearchingInvite(false)
+    }
+  }
+
+  function toggleInvitee(friend: Friend) {
+    setSelectedInvitees((prev) =>
+      prev.some((f) => f.id === friend.id)
+        ? prev.filter((f) => f.id !== friend.id)
+        : [...prev, friend]
+    )
+  }
+
+  async function handleSendInvite() {
+    if (selectedInvitees.length === 0) return
+    try {
+      setSending(true)
+      setSendResult(null)
+      const res = await fetch(`/api/seminars/${id}/invite`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ friendIds: selectedInvitees.map((f) => f.id) }),
+      })
+      const json = await res.json()
+      if (res.ok) {
+        setSendResult(`${json.data.sentCount}名に案内を送信しました`)
+        setSelectedInvitees([])
+        setInviteSearch("")
+        setInviteResults([])
+      } else {
+        setSendResult(json.error || "送信に失敗しました")
+      }
+    } catch {
+      setSendResult("送信に失敗しました")
+    } finally {
+      setSending(false)
+    }
+  }
+
   // 参加者統計
   const stats = seminar
     ? {
@@ -372,10 +432,16 @@ export default function SeminarDetailPage() {
             <CardHeader>
               <div className="flex items-center justify-between">
                 <CardTitle>参加者一覧</CardTitle>
-                <Button size="sm" onClick={() => setAddAttendeeOpen(true)}>
-                  <UserPlus className="h-4 w-4 mr-2" />
-                  参加者追加
-                </Button>
+                <div className="flex gap-2">
+                  <Button size="sm" variant="outline" onClick={() => { setInviteOpen(true); setSendResult(null) }}>
+                    <Send className="h-4 w-4 mr-2" />
+                    LINE案内送信
+                  </Button>
+                  <Button size="sm" onClick={() => setAddAttendeeOpen(true)}>
+                    <UserPlus className="h-4 w-4 mr-2" />
+                    参加者追加
+                  </Button>
+                </div>
               </div>
             </CardHeader>
             <CardContent>
@@ -568,6 +634,95 @@ export default function SeminarDetailPage() {
             <Button onClick={handleSaveEdit} disabled={saving}>
               {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               保存
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* LINE案内送信ダイアログ */}
+      <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>LINE案内送信</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <Input
+                placeholder="友だちを検索..."
+                value={inviteSearch}
+                onChange={(e) => searchInviteFriends(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+
+            {/* 選択済み */}
+            {selectedInvitees.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {selectedInvitees.map((f) => (
+                  <span
+                    key={f.id}
+                    className="inline-flex items-center gap-1 px-2 py-1 bg-green-50 text-green-700 text-xs rounded-full cursor-pointer hover:bg-green-100"
+                    onClick={() => toggleInvitee(f)}
+                  >
+                    {f.custom_name || f.display_name || "名前なし"} ×
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {/* 検索結果 */}
+            <div className="max-h-48 overflow-y-auto space-y-1">
+              {searchingInvite ? (
+                <div className="flex items-center justify-center py-4">
+                  <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
+                  <span className="ml-2 text-xs text-gray-500">検索中...</span>
+                </div>
+              ) : (
+                inviteResults.map((friend) => {
+                  const selected = selectedInvitees.some((f) => f.id === friend.id)
+                  return (
+                    <button
+                      key={friend.id}
+                      type="button"
+                      className={`w-full flex items-center gap-3 p-2 rounded-md transition-colors text-left ${
+                        selected ? "bg-green-50 border border-green-200" : "hover:bg-gray-50"
+                      }`}
+                      onClick={() => toggleInvitee(friend)}
+                    >
+                      {friend.picture_url ? (
+                        <img src={friend.picture_url} alt="" className="h-8 w-8 rounded-full" />
+                      ) : (
+                        <div className="h-8 w-8 rounded-full bg-gray-200 flex items-center justify-center">
+                          <Users className="h-4 w-4 text-gray-400" />
+                        </div>
+                      )}
+                      <span className="text-sm font-medium flex-1">
+                        {friend.custom_name || friend.display_name || "名前なし"}
+                      </span>
+                      {selected && <span className="text-green-600 text-xs">選択済</span>}
+                    </button>
+                  )
+                })
+              )}
+            </div>
+
+            {sendResult && (
+              <p className={`text-sm ${sendResult.includes("失敗") ? "text-red-600" : "text-green-600"}`}>
+                {sendResult}
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setInviteOpen(false)}>
+              閉じる
+            </Button>
+            <Button
+              onClick={handleSendInvite}
+              disabled={sending || selectedInvitees.length === 0}
+            >
+              {sending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              {selectedInvitees.length}名に送信
             </Button>
           </DialogFooter>
         </DialogContent>
