@@ -35,9 +35,9 @@ import { formatDate, formatRelativeTime } from "@/lib/utils/date"
 interface FriendDetail {
   id: string
   line_user_id: string
-  line_display_name: string | null
   display_name: string | null
-  avatar_url: string | null
+  custom_name: string | null
+  picture_url: string | null
   status: string
   memo: string | null
   first_added_at: string | null
@@ -88,7 +88,7 @@ export default function FriendDetailPage() {
   const [message, setMessage] = useState("")
   const [sending, setSending] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
-  const [editForm, setEditForm] = useState({ display_name: "", memo: "" })
+  const [editForm, setEditForm] = useState({ customName: "", memo: "" })
   const [saving, setSaving] = useState(false)
   const [tagDialogOpen, setTagDialogOpen] = useState(false)
   const [availableTags, setAvailableTags] = useState<AvailableTag[]>([])
@@ -98,7 +98,22 @@ export default function FriendDetailPage() {
       const res = await fetch(`/api/friends/${friendId}`)
       if (res.ok) {
         const json = await res.json()
-        setFriend(json.data)
+        const raw = json.data
+        // Transform API response to match FriendDetail interface
+        const transformed: FriendDetail = {
+          ...raw,
+          tags: (raw.friend_tags || []).map((ft: { tags: { id: string; name: string; color: string } }) => ft.tags).filter(Boolean),
+          attendances: (raw.attendances || []).map((att: { id: string; status: string; applied_at: string | null; seminars: { id: string; title: string; event_date: string | null } }) => ({
+            ...att,
+            seminar: att.seminars ? { id: att.seminars.id, title: att.seminars.title, date: att.seminars.event_date } : { id: "", title: "不明", date: null },
+          })),
+          message_logs: (raw.message_logs || []).map((log: { id: string; event_type: string; message_type: string; content: string | null; created_at: string }) => ({
+            ...log,
+            direction: log.event_type === "message_send" ? "outgoing" : "incoming",
+            sent_at: log.created_at,
+          })),
+        }
+        setFriend(transformed)
       }
     } catch (err) {
       console.error("Failed to fetch friend:", err)
@@ -195,7 +210,7 @@ export default function FriendDetailPage() {
   const openEditDialog = () => {
     if (friend) {
       setEditForm({
-        display_name: friend.display_name || "",
+        customName: friend.custom_name || "",
         memo: friend.memo || "",
       })
     }
@@ -226,7 +241,7 @@ export default function FriendDetailPage() {
   }
 
   const status = statusConfig[friend.status] || statusConfig.active
-  const assignedTagIds = new Set(friend.tags.map((t) => t.id))
+  const assignedTagIds = new Set((friend.tags || []).map((t) => t.id))
   const unassignedTags = availableTags.filter((t) => !assignedTagIds.has(t.id))
 
   return (
@@ -244,9 +259,9 @@ export default function FriendDetailPage() {
           <Card className="p-6">
             <div className="flex items-start justify-between mb-4">
               <div className="flex items-center gap-3">
-                {friend.avatar_url ? (
+                {friend.picture_url ? (
                   <img
-                    src={friend.avatar_url}
+                    src={friend.picture_url}
                     alt=""
                     className="w-16 h-16 rounded-full"
                   />
@@ -257,11 +272,11 @@ export default function FriendDetailPage() {
                 )}
                 <div>
                   <h2 className="font-bold text-lg">
-                    {friend.display_name || friend.line_display_name || "名前なし"}
+                    {friend.custom_name || friend.display_name || "名前なし"}
                   </h2>
-                  {friend.display_name && friend.line_display_name && (
+                  {friend.custom_name && friend.display_name && (
                     <p className="text-sm text-muted-foreground">
-                      LINE: {friend.line_display_name}
+                      LINE: {friend.display_name}
                     </p>
                   )}
                 </div>
@@ -312,10 +327,10 @@ export default function FriendDetailPage() {
               </Button>
             </div>
             <div className="flex flex-wrap gap-2">
-              {friend.tags.length === 0 ? (
+              {(friend.tags || []).length === 0 ? (
                 <p className="text-sm text-muted-foreground">タグなし</p>
               ) : (
-                friend.tags.map((tag) => (
+                (friend.tags || []).map((tag) => (
                   <Badge
                     key={tag.id}
                     className="flex items-center gap-1"
@@ -377,11 +392,11 @@ export default function FriendDetailPage() {
               <Calendar size={16} />
               セミナー参加履歴
             </h3>
-            {friend.attendances.length === 0 ? (
+            {(friend.attendances || []).length === 0 ? (
               <p className="text-sm text-muted-foreground">参加履歴はありません</p>
             ) : (
               <div className="space-y-3">
-                {friend.attendances.map((att) => {
+                {(friend.attendances || []).map((att) => {
                   const attStatus =
                     attendanceStatusConfig[att.status] || attendanceStatusConfig.applied
                   return (
@@ -416,11 +431,11 @@ export default function FriendDetailPage() {
               <MessageSquare size={16} />
               メッセージ履歴
             </h3>
-            {friend.message_logs.length === 0 ? (
+            {(friend.message_logs || []).length === 0 ? (
               <p className="text-sm text-muted-foreground">メッセージ履歴はありません</p>
             ) : (
               <div className="space-y-2 max-h-80 overflow-y-auto">
-                {friend.message_logs.map((log) => (
+                {(friend.message_logs || []).map((log) => (
                   <div
                     key={log.id}
                     className={`flex ${
@@ -463,9 +478,9 @@ export default function FriendDetailPage() {
             <div>
               <Label>表示名</Label>
               <Input
-                value={editForm.display_name}
+                value={editForm.customName}
                 onChange={(e) =>
-                  setEditForm((prev) => ({ ...prev, display_name: e.target.value }))
+                  setEditForm((prev) => ({ ...prev, customName: e.target.value }))
                 }
                 placeholder="カスタム表示名"
               />
