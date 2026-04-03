@@ -46,7 +46,14 @@ import {
   MessageSquare,
   Send,
   Trash2,
+  Tag,
 } from "lucide-react"
+
+interface Tag {
+  id: string
+  name: string
+  color: string | null
+}
 
 interface Friend {
   id: string
@@ -124,6 +131,9 @@ export default function SeminarDetailPage() {
   const [selectedInvitees, setSelectedInvitees] = useState<Friend[]>([])
   const [sending, setSending] = useState(false)
   const [sendResult, setSendResult] = useState<string | null>(null)
+  const [tags, setTags] = useState<Tag[]>([])
+  const [selectedTagId, setSelectedTagId] = useState<string>("")
+  const [loadingByTag, setLoadingByTag] = useState(false)
 
   // 編集フォーム
   const [editForm, setEditForm] = useState({
@@ -256,15 +266,28 @@ export default function SeminarDetailPage() {
     }
   }
 
+  async function fetchTags() {
+    try {
+      const res = await fetch("/api/tags")
+      const json = await res.json()
+      setTags(json.data ?? [])
+    } catch {
+      console.error("タグ取得に失敗しました")
+    }
+  }
+
   async function searchInviteFriends(query: string) {
     setInviteSearch(query)
-    if (query.length < 1) {
+    if (query.length < 1 && !selectedTagId) {
       setInviteResults([])
       return
     }
     try {
       setSearchingInvite(true)
-      const res = await fetch(`/api/friends?search=${encodeURIComponent(query)}`)
+      const params = new URLSearchParams({ pageSize: "100" })
+      if (query) params.set("search", query)
+      if (selectedTagId) params.set("tagIds", selectedTagId)
+      const res = await fetch(`/api/friends?${params}`)
       const json = await res.json()
       setInviteResults(json.data ?? [])
     } catch {
@@ -272,6 +295,38 @@ export default function SeminarDetailPage() {
     } finally {
       setSearchingInvite(false)
     }
+  }
+
+  async function handleTagSelect(tagId: string) {
+    const actualTagId = tagId === "all" ? "" : tagId
+    setSelectedTagId(actualTagId)
+    if (!actualTagId && !inviteSearch) {
+      setInviteResults([])
+      return
+    }
+    try {
+      setLoadingByTag(true)
+      const params = new URLSearchParams({ pageSize: "100" })
+      if (inviteSearch) params.set("search", inviteSearch)
+      if (actualTagId) params.set("tagIds", actualTagId)
+      const res = await fetch(`/api/friends?${params}`)
+      const json = await res.json()
+      setInviteResults(json.data ?? [])
+    } catch {
+      console.error("タグ検索に失敗しました")
+    } finally {
+      setLoadingByTag(false)
+    }
+  }
+
+  function selectAllResults() {
+    const newInvitees = [...selectedInvitees]
+    for (const f of inviteResults) {
+      if (!newInvitees.some((s) => s.id === f.id)) {
+        newInvitees.push(f)
+      }
+    }
+    setSelectedInvitees(newInvitees)
   }
 
   function toggleInvitee(friend: Friend) {
@@ -655,16 +710,47 @@ export default function SeminarDetailPage() {
       </Dialog>
 
       {/* LINE案内送信ダイアログ */}
-      <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
+      <Dialog open={inviteOpen} onOpenChange={(open) => {
+        setInviteOpen(open)
+        if (open && tags.length === 0) fetchTags()
+      }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>LINE案内送信</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
+            {/* タグフィルター */}
+            <div>
+              <Label className="text-xs text-gray-500 mb-1.5 block">
+                <Tag className="h-3 w-3 inline mr-1" />
+                タグで絞り込み
+              </Label>
+              <Select value={selectedTagId} onValueChange={handleTagSelect}>
+                <SelectTrigger className="h-9 text-sm">
+                  <SelectValue placeholder="タグを選択..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">すべて</SelectItem>
+                  {tags.map((tag) => (
+                    <SelectItem key={tag.id} value={tag.id}>
+                      <span className="flex items-center gap-2">
+                        <span
+                          className="inline-block h-2.5 w-2.5 rounded-full"
+                          style={{ backgroundColor: tag.color || "#9CA3AF" }}
+                        />
+                        {tag.name}
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* 名前検索 */}
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
               <Input
-                placeholder="友だちを検索..."
+                placeholder="名前で検索..."
                 value={inviteSearch}
                 onChange={(e) => searchInviteFriends(e.target.value)}
                 className="pl-10"
@@ -673,53 +759,79 @@ export default function SeminarDetailPage() {
 
             {/* 選択済み */}
             {selectedInvitees.length > 0 && (
-              <div className="flex flex-wrap gap-2">
-                {selectedInvitees.map((f) => (
-                  <span
-                    key={f.id}
-                    className="inline-flex items-center gap-1 px-2 py-1 bg-green-50 text-green-700 text-xs rounded-full cursor-pointer hover:bg-green-100"
-                    onClick={() => toggleInvitee(f)}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-xs text-gray-500">選択済み: {selectedInvitees.length}名</span>
+                  <button
+                    type="button"
+                    className="text-xs text-red-500 hover:underline"
+                    onClick={() => setSelectedInvitees([])}
                   >
-                    {f.custom_name || f.display_name || "名前なし"} ×
-                  </span>
-                ))}
+                    すべて解除
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {selectedInvitees.map((f) => (
+                    <span
+                      key={f.id}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 bg-green-50 text-green-700 text-xs rounded-full cursor-pointer hover:bg-green-100"
+                      onClick={() => toggleInvitee(f)}
+                    >
+                      {f.custom_name || f.display_name || "名前なし"} ×
+                    </span>
+                  ))}
+                </div>
               </div>
             )}
 
             {/* 検索結果 */}
-            <div className="max-h-48 overflow-y-auto space-y-1">
-              {searchingInvite ? (
-                <div className="flex items-center justify-center py-4">
-                  <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
-                  <span className="ml-2 text-xs text-gray-500">検索中...</span>
+            <div>
+              {inviteResults.length > 0 && (
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-xs text-gray-500">{inviteResults.length}名</span>
+                  <button
+                    type="button"
+                    className="text-xs text-blue-600 hover:underline"
+                    onClick={selectAllResults}
+                  >
+                    すべて選択
+                  </button>
                 </div>
-              ) : (
-                inviteResults.map((friend) => {
-                  const selected = selectedInvitees.some((f) => f.id === friend.id)
-                  return (
-                    <button
-                      key={friend.id}
-                      type="button"
-                      className={`w-full flex items-center gap-3 p-2 rounded-md transition-colors text-left ${
-                        selected ? "bg-green-50 border border-green-200" : "hover:bg-gray-50"
-                      }`}
-                      onClick={() => toggleInvitee(friend)}
-                    >
-                      {friend.picture_url ? (
-                        <img src={friend.picture_url} alt="" className="h-8 w-8 rounded-full" />
-                      ) : (
-                        <div className="h-8 w-8 rounded-full bg-gray-200 flex items-center justify-center">
-                          <Users className="h-4 w-4 text-gray-400" />
-                        </div>
-                      )}
-                      <span className="text-sm font-medium flex-1">
-                        {friend.custom_name || friend.display_name || "名前なし"}
-                      </span>
-                      {selected && <span className="text-green-600 text-xs">選択済</span>}
-                    </button>
-                  )
-                })
               )}
+              <div className="max-h-48 overflow-y-auto space-y-1">
+                {searchingInvite || loadingByTag ? (
+                  <div className="flex items-center justify-center py-4">
+                    <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
+                    <span className="ml-2 text-xs text-gray-500">検索中...</span>
+                  </div>
+                ) : (
+                  inviteResults.map((friend) => {
+                    const selected = selectedInvitees.some((f) => f.id === friend.id)
+                    return (
+                      <button
+                        key={friend.id}
+                        type="button"
+                        className={`w-full flex items-center gap-3 p-2 rounded-md transition-colors text-left ${
+                          selected ? "bg-green-50 border border-green-200" : "hover:bg-gray-50"
+                        }`}
+                        onClick={() => toggleInvitee(friend)}
+                      >
+                        {friend.picture_url ? (
+                          <img src={friend.picture_url} alt="" className="h-8 w-8 rounded-full" />
+                        ) : (
+                          <div className="h-8 w-8 rounded-full bg-gray-200 flex items-center justify-center">
+                            <Users className="h-4 w-4 text-gray-400" />
+                          </div>
+                        )}
+                        <span className="text-sm font-medium flex-1">
+                          {friend.custom_name || friend.display_name || "名前なし"}
+                        </span>
+                        {selected && <span className="text-green-600 text-xs">選択済</span>}
+                      </button>
+                    )
+                  })
+                )}
+              </div>
             </div>
 
             {sendResult && (
