@@ -82,7 +82,7 @@ export default function LoginPage() {
             <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center">
               <span className="text-white font-bold text-lg">L</span>
             </div>
-            <span className="text-2xl font-bold text-foreground">LINE CRM</span>
+            <span className="text-2xl font-bold text-foreground">LINE connect CRM</span>
           </div>
           <p className="text-muted-foreground text-sm">
             {resetMode ? "パスワードをリセット" : "管理システムにログイン"}

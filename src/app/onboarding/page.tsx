@@ -147,7 +147,7 @@ export default function OnboardingPage() {
         <Sparkles className="h-8 w-8 text-green-500" />
       </div>
       <h1 className="mb-2 text-2xl font-bold text-gray-900">
-        LINE CRMへようこそ！
+        LINE connect CRMへようこそ！
       </h1>
       <p className="mb-8 text-gray-500">
         かんたん3ステップでLINE公式アカウントとCRMを連携しましょう。
@@ -518,7 +518,7 @@ export default function OnboardingPage() {
         セットアップが完了しました！
       </h1>
       <p className="mb-8 text-gray-500">
-        LINE CRMを使い始める準備ができました。
+        LINE connect CRMを使い始める準備ができました。
       </p>
 
       <div className="mx-auto max-w-md rounded-xl border border-gray-200 p-5 text-left">

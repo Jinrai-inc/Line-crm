@@ -27,9 +27,9 @@ const faqSections: FAQSection[] = [
     title: "はじめに",
     items: [
       {
-        question: "LINE CRMとは何ですか？",
+        question: "LINE connect CRMとは何ですか？",
         answer:
-          "LINE CRMは、LINE公式アカウントと連携して友だち（顧客）を管理するためのシステムです。セミナー管理、婚活スクール運営、メッセージ配信など、ビジネスに必要な機能を備えています。",
+          "LINE connect CRMは、LINE公式アカウントと連携して友だち（顧客）を管理するためのシステムです。セミナー管理、婚活スクール運営、メッセージ配信など、ビジネスに必要な機能を備えています。",
       },
       {
         question: "初期設定の手順を教えてください。",

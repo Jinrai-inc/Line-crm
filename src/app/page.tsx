@@ -172,7 +172,7 @@ export default function DashboardPage() {
       <ModuleAccentBar />
       <PageHeader
         title="ダッシュボード"
-        description="LINE CRM管理システムの概要"
+        description="LINE connect CRM管理システムの概要"
       />
 
       {/* モジュールカード */}

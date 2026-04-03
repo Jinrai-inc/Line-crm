@@ -33,7 +33,7 @@ export function WizardLayout({
       {/* Header: Logo + Progress */}
       <div className="w-full max-w-[800px]">
         <div className="mb-2 text-center text-xl font-bold text-green-600">
-          LINE CRM
+          LINE connect CRM
         </div>
         <ProgressBar steps={steps} currentStep={currentStep} />
       </div>
