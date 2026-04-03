@@ -45,6 +45,7 @@ import {
   Loader2,
   MessageSquare,
   Send,
+  Trash2,
 } from "lucide-react"
 
 interface Friend {
@@ -307,6 +308,16 @@ export default function SeminarDetailPage() {
     }
   }
 
+  async function handleDelete() {
+    if (!confirm("このセミナーを削除しますか？参加者情報も削除されます。")) return
+    try {
+      const res = await fetch(`/api/seminars/${id}`, { method: "DELETE" })
+      if (res.ok) router.push("/seminars")
+    } catch {
+      console.error("削除に失敗しました")
+    }
+  }
+
   // 参加者統計
   const stats = seminar
     ? {
@@ -359,6 +370,10 @@ export default function SeminarDetailPage() {
             <Button variant="outline" onClick={openEditDialog}>
               <Pencil className="h-4 w-4 mr-2" />
               編集
+            </Button>
+            <Button variant="outline" onClick={handleDelete} className="text-red-600 hover:text-red-700 hover:bg-red-50">
+              <Trash2 className="h-4 w-4 mr-2" />
+              削除
             </Button>
           </div>
         }
