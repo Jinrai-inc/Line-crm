@@ -48,13 +48,14 @@ import {
 
 interface Friend {
   id: string
-  line_display_name: string
-  avatar_url: string | null
+  display_name: string | null
+  custom_name: string | null
+  picture_url: string | null
 }
 
 interface Attendee {
   id: string
-  friend: Friend
+  friends: Friend | null
   status: "applied" | "confirmed" | "attended" | "cancelled"
   applied_at: string | null
   confirmed_at: string | null
@@ -65,10 +66,10 @@ interface Seminar {
   id: string
   title: string
   description: string
-  date: string
+  event_date: string
   start_time: string
   end_time: string
-  venue: string
+  location: string | null
   capacity: number
   status: "open" | "closed" | "cancelled"
   attendee_count: number
@@ -148,10 +149,10 @@ export default function SeminarDetailPage() {
     setEditForm({
       title: seminar.title,
       description: seminar.description,
-      date: seminar.date,
-      start_time: seminar.start_time,
-      end_time: seminar.end_time,
-      venue: seminar.venue,
+      date: seminar.event_date,
+      start_time: seminar.start_time || "",
+      end_time: seminar.end_time || "",
+      venue: seminar.location || "",
       capacity: seminar.capacity,
     })
     setEditOpen(true)
@@ -166,10 +167,10 @@ export default function SeminarDetailPage() {
         body: JSON.stringify({
           title: editForm.title,
           description: editForm.description,
-          date: editForm.date,
+          eventDate: editForm.date,
           startTime: editForm.start_time,
           endTime: editForm.end_time,
-          venue: editForm.venue,
+          location: editForm.venue,
           capacity: editForm.capacity,
         }),
       })
@@ -326,19 +327,19 @@ export default function SeminarDetailPage() {
                 <div className="flex items-center gap-2 text-sm">
                   <CalendarDays className="h-4 w-4 text-gray-400" />
                   <span className="text-gray-500">日付:</span>
-                  <span>{formatDate(seminar.date)}</span>
+                  <span>{formatDate(seminar.event_date)}</span>
                 </div>
                 <div className="flex items-center gap-2 text-sm">
                   <Clock className="h-4 w-4 text-gray-400" />
                   <span className="text-gray-500">時間:</span>
                   <span>
-                    {formatTime(seminar.start_time)} - {formatTime(seminar.end_time)}
+                    {seminar.start_time ? formatTime(seminar.start_time) : "未設定"} - {seminar.end_time ? formatTime(seminar.end_time) : "未設定"}
                   </span>
                 </div>
                 <div className="flex items-center gap-2 text-sm">
                   <MapPin className="h-4 w-4 text-gray-400" />
                   <span className="text-gray-500">会場:</span>
-                  <span>{seminar.venue || "未設定"}</span>
+                  <span>{seminar.location || "未設定"}</span>
                 </div>
                 <div className="flex items-center gap-2 text-sm">
                   <Users className="h-4 w-4 text-gray-400" />
@@ -396,9 +397,9 @@ export default function SeminarDetailPage() {
                         <TableRow key={attendee.id}>
                           <TableCell>
                             <div className="flex items-center gap-2">
-                              {attendee.friend.avatar_url ? (
+                              {attendee.friends?.picture_url ? (
                                 <img
-                                  src={attendee.friend.avatar_url}
+                                  src={attendee.friends.picture_url}
                                   alt=""
                                   className="h-8 w-8 rounded-full"
                                 />
@@ -408,7 +409,7 @@ export default function SeminarDetailPage() {
                                 </div>
                               )}
                               <span className="text-sm font-medium">
-                                {attendee.friend.line_display_name}
+                                {attendee.friends?.custom_name || attendee.friends?.display_name || "名前なし"}
                               </span>
                             </div>
                           </TableCell>
@@ -606,9 +607,9 @@ export default function SeminarDetailPage() {
                     className="w-full flex items-center gap-3 p-2 rounded-md hover:bg-gray-50 transition-colors text-left"
                     onClick={() => addAttendee(friend.id)}
                   >
-                    {friend.avatar_url ? (
+                    {friend.picture_url ? (
                       <img
-                        src={friend.avatar_url}
+                        src={friend.picture_url}
                         alt=""
                         className="h-8 w-8 rounded-full"
                       />
@@ -617,7 +618,7 @@ export default function SeminarDetailPage() {
                         <Users className="h-4 w-4 text-gray-400" />
                       </div>
                     )}
-                    <span className="text-sm font-medium">{friend.line_display_name}</span>
+                    <span className="text-sm font-medium">{friend.custom_name || friend.display_name || "名前なし"}</span>
                   </button>
                 ))
               )}

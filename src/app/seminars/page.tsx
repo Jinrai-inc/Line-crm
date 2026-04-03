@@ -26,10 +26,10 @@ interface Seminar {
   id: string
   title: string
   description: string
-  date: string
+  event_date: string
   start_time: string
   end_time: string
-  venue: string
+  location: string | null
   capacity: number
   status: "open" | "closed" | "cancelled"
   attendee_count: number
@@ -147,18 +147,18 @@ export default function SeminarsPage() {
                 <CardContent className="space-y-2">
                   <div className="flex items-center gap-2 text-sm text-gray-600">
                     <CalendarDays className="h-4 w-4 shrink-0" />
-                    <span>{formatDate(seminar.date)}</span>
+                    <span>{formatDate(seminar.event_date)}</span>
                   </div>
                   <div className="flex items-center gap-2 text-sm text-gray-600">
                     <Clock className="h-4 w-4 shrink-0" />
                     <span>
-                      {formatTime(seminar.start_time)} - {formatTime(seminar.end_time)}
+                      {seminar.start_time ? formatTime(seminar.start_time) : "未設定"} - {seminar.end_time ? formatTime(seminar.end_time) : "未設定"}
                     </span>
                   </div>
-                  {seminar.venue && (
+                  {seminar.location && (
                     <div className="flex items-center gap-2 text-sm text-gray-600">
                       <MapPin className="h-4 w-4 shrink-0" />
-                      <span className="truncate">{seminar.venue}</span>
+                      <span className="truncate">{seminar.location}</span>
                     </div>
                   )}
                   <div className="flex items-center gap-2 text-sm text-gray-600">
