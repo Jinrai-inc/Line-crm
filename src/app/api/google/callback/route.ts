@@ -63,6 +63,7 @@ export async function GET(request: NextRequest) {
       .upsert(
         {
           organization_id: orgId,
+          user_id: user.id,
           google_access_token: tokens.access_token,
           google_refresh_token: tokens.refresh_token,
           google_token_expires_at: tokenExpiresAt,
@@ -70,7 +71,7 @@ export async function GET(request: NextRequest) {
           sync_enabled: true,
           updated_at: new Date().toISOString(),
         },
-        { onConflict: "organization_id" }
+        { onConflict: "organization_id,user_id" }
       )
 
     if (error) {

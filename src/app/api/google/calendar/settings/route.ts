@@ -7,13 +7,14 @@ export async function GET() {
   try {
     const auth = await getAuthenticatedOrgId()
     if (!auth.ok) return auth.response
-    const { orgId } = auth
+    const { orgId, userId } = auth
     const admin = createAdminClient()
 
     const { data: settings } = await admin
       .from("google_calendar_settings")
       .select("id, organization_id, calendar_id, sync_enabled, created_at, updated_at")
       .eq("organization_id", orgId)
+      .eq("user_id", userId)
       .single()
 
     return NextResponse.json({ settings: settings ?? null })
@@ -28,7 +29,7 @@ export async function PATCH(request: NextRequest) {
   try {
     const auth = await getAuthenticatedOrgId()
     if (!auth.ok) return auth.response
-    const { orgId } = auth
+    const { orgId, userId } = auth
     const admin = createAdminClient()
 
     const body = await request.json()
@@ -41,6 +42,7 @@ export async function PATCH(request: NextRequest) {
         updated_at: new Date().toISOString(),
       })
       .eq("organization_id", orgId)
+      .eq("user_id", userId)
       .select("id, organization_id, calendar_id, sync_enabled, created_at, updated_at")
       .single()
 
@@ -58,13 +60,14 @@ export async function DELETE() {
   try {
     const auth = await getAuthenticatedOrgId()
     if (!auth.ok) return auth.response
-    const { orgId } = auth
+    const { orgId, userId } = auth
     const admin = createAdminClient()
 
     const { error } = await admin
       .from("google_calendar_settings")
       .delete()
       .eq("organization_id", orgId)
+      .eq("user_id", userId)
 
     if (error) throw error
 
