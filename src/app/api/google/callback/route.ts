@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getAuthenticatedOrgId } from "@/lib/api/auth"
-import { createAdminClient } from "@/lib/supabase/server"
+import { createServerSupabaseClient, createAdminClient } from "@/lib/supabase/server"
 import { createOAuth2Client } from "@/lib/google/calendar"
 
 export async function GET(request: NextRequest) {
@@ -24,15 +23,34 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Get authenticated user and organization
-    const auth = await getAuthenticatedOrgId()
-    if (!auth.ok) {
+    // セッションからユーザーを取得
+    const supabase = await createServerSupabaseClient()
+    const { data: { user } } = await supabase.auth.getUser()
+
+    if (!user) {
+      console.error("Google callback: no authenticated user found")
       return NextResponse.redirect(
         new URL("/settings/google-calendar?error=unauthorized", request.url)
       )
     }
-    const { orgId } = auth
+
     const admin = createAdminClient()
+
+    // ユーザーの組織IDを取得
+    const { data: userData } = await admin
+      .from("users")
+      .select("organization_id")
+      .eq("id", user.id)
+      .single()
+
+    if (!userData?.organization_id) {
+      console.error("Google callback: user has no organization", user.id)
+      return NextResponse.redirect(
+        new URL("/settings/google-calendar?error=no_org", request.url)
+      )
+    }
+
+    const orgId = userData.organization_id
 
     // Calculate token expiry
     const tokenExpiresAt = tokens.expiry_date
