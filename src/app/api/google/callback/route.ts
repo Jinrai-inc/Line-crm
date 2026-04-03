@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getAuthenticatedOrgId } from "@/lib/api/auth"
+import { createAdminClient } from "@/lib/supabase/server"
 import { createOAuth2Client } from "@/lib/google/calendar"
 
 export async function GET(request: NextRequest) {
@@ -30,7 +31,8 @@ export async function GET(request: NextRequest) {
         new URL("/settings/google-calendar?error=unauthorized", request.url)
       )
     }
-    const { supabase, orgId } = auth
+    const { orgId } = auth
+    const admin = createAdminClient()
 
     // Calculate token expiry
     const tokenExpiresAt = tokens.expiry_date
@@ -38,7 +40,7 @@ export async function GET(request: NextRequest) {
       : null
 
     // Upsert google_calendar_settings
-    const { error } = await supabase
+    const { error } = await admin
       .from("google_calendar_settings")
       .upsert(
         {
