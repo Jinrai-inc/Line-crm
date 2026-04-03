@@ -1,6 +1,7 @@
 "use client"
 
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, useCallback } from "react"
+import { useRouter } from "next/navigation"
 import {
   Menu,
   LogOut,
@@ -12,6 +13,7 @@ import {
 } from "lucide-react"
 import { modules } from "@/lib/modules"
 import { useAppStore } from "@/stores/app-store"
+import { createClient } from "@/lib/supabase/client"
 
 const moduleIconMap: Record<string, LucideIcon> = {
   CalendarDays,
@@ -19,12 +21,26 @@ const moduleIconMap: Record<string, LucideIcon> = {
 }
 
 export function Header() {
+  const router = useRouter()
   const { activeModule, toggleSidebar } = useAppStore()
   const currentModule = modules[activeModule]
   const ModIcon = moduleIconMap[currentModule.icon]
 
   const [userMenuOpen, setUserMenuOpen] = useState(false)
+  const [userEmail, setUserEmail] = useState<string | null>(null)
   const userMenuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    createClient().auth.getUser().then(({ data }) => {
+      setUserEmail(data.user?.email ?? null)
+    })
+  }, [])
+
+  const handleLogout = useCallback(async () => {
+    setUserMenuOpen(false)
+    await createClient().auth.signOut()
+    router.push("/login")
+  }, [router])
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -77,12 +93,10 @@ export function Header() {
           <div className="absolute right-0 mt-2 w-48 rounded-lg bg-white border border-gray-200 shadow-lg py-1 z-50">
             <div className="px-4 py-2 border-b border-gray-100">
               <p className="text-sm font-medium text-gray-900">管理者</p>
-              <p className="text-xs text-gray-500">admin@example.com</p>
+              <p className="text-xs text-gray-500 truncate">{userEmail ?? ""}</p>
             </div>
             <button
-              onClick={() => {
-                setUserMenuOpen(false)
-              }}
+              onClick={handleLogout}
               className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
             >
               <LogOut className="h-4 w-4" />
