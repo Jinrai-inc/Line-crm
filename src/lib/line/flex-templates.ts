@@ -476,6 +476,126 @@ export function createOmiaiScheduleMessage(omiai: OmiaiInfo) {
   })
 }
 
+// セミナーフォローアップ Flex Message
+export function createFollowupMessage(
+  attendeeName: string,
+  thankYouMessage: string,
+  buttons: Array<{ label: string; tagName: string; responseMessage: string; responseUrl: string }>,
+  seminarId: string
+): Record<string, unknown> {
+  const personalizedMessage = thankYouMessage.replace(/\{name\}/g, attendeeName)
+
+  return flexMessage("セミナーフォローアップ", {
+    type: "bubble",
+    header: {
+      type: "box",
+      layout: "vertical",
+      backgroundColor: "#06C755",
+      paddingAll: "lg",
+      contents: [
+        {
+          type: "text",
+          text: personalizedMessage,
+          color: "#FFFFFF",
+          weight: "bold",
+          size: "md",
+          wrap: true,
+        },
+      ],
+    },
+    body: {
+      type: "box",
+      layout: "vertical",
+      spacing: "md",
+      paddingAll: "lg",
+      contents: [
+        {
+          type: "text",
+          text: "タップ後に特典をお渡しします",
+          weight: "bold",
+          size: "md",
+          wrap: true,
+        },
+        {
+          type: "text",
+          text: "どちらか1つだけタップしてください。",
+          size: "sm",
+          color: "#888888",
+          margin: "sm",
+        },
+      ],
+    },
+    footer: {
+      type: "box",
+      layout: "vertical",
+      spacing: "md",
+      paddingAll: "lg",
+      contents: buttons.map((button, index) => ({
+        type: "button",
+        style: "primary",
+        color: "#06C755",
+        height: "md",
+        action: {
+          type: "postback",
+          label: button.label,
+          data: `action=followup_response&seminar_id=${seminarId}&button_index=${index}`,
+          displayText: button.label,
+        },
+      })),
+    },
+  })
+}
+
+// フォローアップ応答 Flex Message
+export function createFollowupResponseMessage(
+  responseMessage: string,
+  responseUrl?: string
+): Record<string, unknown> {
+  const bodyContents: unknown[] = [
+    {
+      type: "text",
+      text: responseMessage,
+      wrap: true,
+      size: "md",
+    },
+  ]
+
+  const footerContents: unknown[] = []
+
+  if (responseUrl) {
+    footerContents.push({
+      type: "button",
+      style: "primary",
+      color: "#06C755",
+      action: {
+        type: "uri",
+        label: "リンクを開く",
+        uri: responseUrl,
+      },
+    })
+  }
+
+  return flexMessage("フォローアップ", {
+    type: "bubble",
+    body: {
+      type: "box",
+      layout: "vertical",
+      paddingAll: "lg",
+      contents: bodyContents,
+    },
+    ...(footerContents.length > 0
+      ? {
+          footer: {
+            type: "box",
+            layout: "vertical",
+            paddingAll: "lg",
+            contents: footerContents,
+          },
+        }
+      : {}),
+  })
+}
+
 // 支払い領収書 Flex Message
 export function createPaymentReceiptMessage(payment: PaymentInfo) {
   return flexMessage("お支払い領収書", {

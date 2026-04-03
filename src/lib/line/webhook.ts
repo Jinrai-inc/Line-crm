@@ -1,7 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/server"
 import { getProfile, replyMessage } from "./client"
 import { createWelcomeMessage, createDefaultReply } from "./messages"
-import { createSeminarListMessage } from "./flex-templates"
+import { createSeminarListMessage, createFollowupResponseMessage } from "./flex-templates"
 
 // Webhookイベントの簡易型（LINEから受信するrawデータ）
 interface WebhookEvent {
@@ -433,6 +433,90 @@ async function handlePostback(
     case "booking_cancel":
       // 予約キャンセル処理
       break
+    case "followup_response": {
+      const seminarId = params.get("seminar_id")
+      const buttonIndex = parseInt(params.get("button_index") || "0", 10)
+      const userId = event.source.userId
+      if (!seminarId || !userId) break
+
+      // フォローアップ設定を取得
+      // seminar_followups テーブルはDB型定義に未追加のため any でキャスト
+      const { data: followup } = await (supabase
+        .from("seminar_followups" as never)
+        .select("*")
+        .eq("seminar_id" as never, seminarId)
+        .single() as unknown as Promise<{ data: { buttons: unknown } | null; error: unknown }>)
+
+      if (!followup) break
+
+      const buttons = followup.buttons as Array<{
+        label: string
+        tagName: string
+        responseMessage: string
+        responseUrl: string
+      }>
+      const button = buttons?.[buttonIndex]
+      if (!button) break
+
+      // タグの自動作成（存在しなければ作成）
+      let { data: tag } = await supabase
+        .from("tags")
+        .select("id")
+        .eq("organization_id", context.organizationId)
+        .eq("name", button.tagName)
+        .single()
+
+      if (!tag) {
+        const { data: newTag } = await supabase
+          .from("tags")
+          .insert({
+            organization_id: context.organizationId,
+            name: button.tagName,
+          })
+          .select("id")
+          .single()
+        tag = newTag
+      }
+
+      // 友だちを取得してタグを付与
+      const { data: friend } = await supabase
+        .from("friends")
+        .select("id")
+        .eq("organization_id", context.organizationId)
+        .eq("line_user_id", userId)
+        .single()
+
+      if (friend && tag) {
+        await supabase.from("friend_tags").upsert(
+          {
+            friend_id: friend.id,
+            tag_id: tag.id,
+            auto_assigned: true,
+          },
+          { onConflict: "friend_id,tag_id" }
+        )
+      }
+
+      // 応答メッセージを送信
+      if (event.replyToken) {
+        await replyMessage(
+          event.replyToken,
+          [createFollowupResponseMessage(button.responseMessage, button.responseUrl)],
+          { accessToken: context.channelAccessToken }
+        )
+      }
+
+      // フォローアップ応答ログ記録
+      await supabase.from("message_logs").insert({
+        organization_id: context.organizationId,
+        friend_id: friend?.id || null,
+        line_user_id: userId,
+        event_type: "followup_response",
+        content: `seminar_id=${seminarId}&button_index=${buttonIndex}&tag=${button.tagName}`,
+        raw_event: JSON.parse(JSON.stringify(event)),
+      })
+      break
+    }
     default:
       break
   }

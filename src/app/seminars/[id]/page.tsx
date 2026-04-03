@@ -43,6 +43,7 @@ import {
   UserPlus,
   Search,
   Loader2,
+  MessageSquare,
 } from "lucide-react"
 
 interface Friend {
@@ -289,6 +290,10 @@ export default function SeminarDetailPage() {
             <Button variant="outline" onClick={() => router.push("/seminars")}>
               <ArrowLeft className="h-4 w-4 mr-2" />
               一覧に戻る
+            </Button>
+            <Button variant="outline" onClick={() => router.push(`/seminars/${id}/followup`)}>
+              <MessageSquare className="h-4 w-4 mr-2" />
+              フォローアップ
             </Button>
             <Button variant="outline" onClick={openEditDialog}>
               <Pencil className="h-4 w-4 mr-2" />
