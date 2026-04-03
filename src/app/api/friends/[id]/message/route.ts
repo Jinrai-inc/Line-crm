@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { createServerSupabaseClient } from "@/lib/supabase/server"
+import { getAuthenticatedOrgId } from "@/lib/api/auth"
 import { pushMessage } from "@/lib/line/client"
 
 // 個別メッセージ送信
@@ -9,9 +9,9 @@ export async function POST(
 ) {
   try {
     const { id: friendId } = await params
-    const supabase = await createServerSupabaseClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return NextResponse.json({ error: "未認証" }, { status: 401 })
+    const auth = await getAuthenticatedOrgId()
+    if (!auth.ok) return auth.response
+    const { supabase } = auth
 
     const { message } = await request.json()
     if (!message) return NextResponse.json({ error: "メッセージを入力してください" }, { status: 400 })

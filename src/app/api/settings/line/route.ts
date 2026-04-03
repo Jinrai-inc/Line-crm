@@ -1,25 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { createServerSupabaseClient } from "@/lib/supabase/server"
-import type { SupabaseClient } from "@supabase/supabase-js"
-
-type AuthResult =
-  | { ok: false; response: NextResponse }
-  | { ok: true; supabase: SupabaseClient; orgId: string }
-
-async function getAuthenticatedOrgId(): Promise<AuthResult> {
-  const supabase = await createServerSupabaseClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return { ok: false, response: NextResponse.json({ error: "未認証" }, { status: 401 }) }
-
-  const { data: userData } = await supabase
-    .from("users")
-    .select("organization_id")
-    .eq("id", user.id)
-    .single()
-  if (!userData) return { ok: false, response: NextResponse.json({ error: "ユーザー情報が見つかりません" }, { status: 404 }) }
-
-  return { ok: true, supabase, orgId: userData.organization_id! }
-}
+import { getAuthenticatedOrgId } from "@/lib/api/auth"
 
 // LINE連携設定の取得（複数アカウント対応）
 export async function GET() {

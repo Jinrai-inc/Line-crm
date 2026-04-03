@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { createServerSupabaseClient } from "@/lib/supabase/server"
+import { getAuthenticatedOrgId } from "@/lib/api/auth"
 import { createOAuth2Client } from "@/lib/google/calendar"
 
 export async function GET(request: NextRequest) {
@@ -24,30 +24,13 @@ export async function GET(request: NextRequest) {
     }
 
     // Get authenticated user and organization
-    const supabase = await createServerSupabaseClient()
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-
-    if (!user) {
+    const auth = await getAuthenticatedOrgId()
+    if (!auth.ok) {
       return NextResponse.redirect(
         new URL("/settings/google-calendar?error=unauthorized", request.url)
       )
     }
-
-    const { data: userData } = await supabase
-      .from("users")
-      .select("organization_id")
-      .eq("id", user.id)
-      .single()
-
-    if (!userData?.organization_id) {
-      return NextResponse.redirect(
-        new URL("/settings/google-calendar?error=no_org", request.url)
-      )
-    }
-
-    const orgId = userData.organization_id
+    const { supabase, orgId } = auth
 
     // Calculate token expiry
     const tokenExpiresAt = tokens.expiry_date

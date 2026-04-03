@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { createServerSupabaseClient } from "@/lib/supabase/server"
+import { getAuthenticatedOrgId } from "@/lib/api/auth"
 
 // タグ更新
 export async function PATCH(
@@ -8,9 +8,9 @@ export async function PATCH(
 ) {
   try {
     const { id } = await params
-    const supabase = await createServerSupabaseClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return NextResponse.json({ error: "未認証" }, { status: 401 })
+    const auth = await getAuthenticatedOrgId()
+    if (!auth.ok) return auth.response
+    const { supabase } = auth
 
     const { name, color, description } = await request.json()
 
@@ -42,9 +42,9 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params
-    const supabase = await createServerSupabaseClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return NextResponse.json({ error: "未認証" }, { status: 401 })
+    const auth = await getAuthenticatedOrgId()
+    if (!auth.ok) return auth.response
+    const { supabase } = auth
 
     const { error } = await supabase.from("tags").delete().eq("id", id)
     if (error) throw error

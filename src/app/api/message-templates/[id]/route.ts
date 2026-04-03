@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { createServerSupabaseClient } from "@/lib/supabase/server"
+import { getAuthenticatedOrgId } from "@/lib/api/auth"
 
 function parseTemplate(row: { content: string; [key: string]: unknown }) {
   let contentData: Record<string, unknown> = {}
@@ -25,17 +25,9 @@ export async function GET(
 ) {
   try {
     const { id } = await params
-    const supabase = await createServerSupabaseClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return NextResponse.json({ error: "未認証" }, { status: 401 })
-
-    const { data: userData } = await supabase
-      .from("users")
-      .select("organization_id")
-      .eq("id", user.id)
-      .single()
-    if (!userData) return NextResponse.json({ error: "ユーザー情報が見つかりません" }, { status: 404 })
-    const orgId = userData.organization_id!
+    const auth = await getAuthenticatedOrgId()
+    if (!auth.ok) return auth.response
+    const { supabase, orgId } = auth
 
     const { data, error } = await supabase
       .from("message_templates")
@@ -65,17 +57,9 @@ export async function PATCH(
 ) {
   try {
     const { id } = await params
-    const supabase = await createServerSupabaseClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return NextResponse.json({ error: "未認証" }, { status: 401 })
-
-    const { data: userData } = await supabase
-      .from("users")
-      .select("organization_id")
-      .eq("id", user.id)
-      .single()
-    if (!userData) return NextResponse.json({ error: "ユーザー情報が見つかりません" }, { status: 404 })
-    const orgId = userData.organization_id!
+    const auth = await getAuthenticatedOrgId()
+    if (!auth.ok) return auth.response
+    const { supabase, orgId } = auth
 
     // Fetch existing to merge content fields
     const { data: existing, error: fetchError } = await supabase
@@ -144,17 +128,9 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params
-    const supabase = await createServerSupabaseClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return NextResponse.json({ error: "未認証" }, { status: 401 })
-
-    const { data: userData } = await supabase
-      .from("users")
-      .select("organization_id")
-      .eq("id", user.id)
-      .single()
-    if (!userData) return NextResponse.json({ error: "ユーザー情報が見つかりません" }, { status: 404 })
-    const orgId = userData.organization_id!
+    const auth = await getAuthenticatedOrgId()
+    if (!auth.ok) return auth.response
+    const { supabase, orgId } = auth
 
     const { error } = await supabase
       .from("message_templates")

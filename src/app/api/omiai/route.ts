@@ -1,20 +1,12 @@
 import { NextRequest, NextResponse } from "next/server"
-import { createServerSupabaseClient } from "@/lib/supabase/server"
+import { getAuthenticatedOrgId } from "@/lib/api/auth"
 
 // お見合い一覧取得
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await createServerSupabaseClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return NextResponse.json({ error: "未認証" }, { status: 401 })
-
-    const { data: userData } = await supabase
-      .from("users")
-      .select("organization_id")
-      .eq("id", user.id)
-      .single()
-    if (!userData) return NextResponse.json({ error: "ユーザー情報が見つかりません" }, { status: 404 })
-    const orgId = userData.organization_id!
+    const auth = await getAuthenticatedOrgId()
+    if (!auth.ok) return auth.response
+    const { supabase, orgId } = auth
 
     const { searchParams } = new URL(request.url)
     const page = parseInt(searchParams.get("page") || "1")
@@ -63,17 +55,9 @@ export async function GET(request: NextRequest) {
 // お見合い作成
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createServerSupabaseClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return NextResponse.json({ error: "未認証" }, { status: 401 })
-
-    const { data: userData } = await supabase
-      .from("users")
-      .select("organization_id")
-      .eq("id", user.id)
-      .single()
-    if (!userData) return NextResponse.json({ error: "ユーザー情報が見つかりません" }, { status: 404 })
-    const orgId = userData.organization_id!
+    const auth = await getAuthenticatedOrgId()
+    if (!auth.ok) return auth.response
+    const { supabase, orgId } = auth
 
     const body = await request.json()
     const { male_member_id, female_member_id, scheduled_date, scheduled_time, location, location_url, status, counselor_note } = body

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { createServerSupabaseClient } from "@/lib/supabase/server"
+import { getAuthenticatedOrgId } from "@/lib/api/auth"
 
 // タグ付与
 export async function POST(
@@ -8,9 +8,9 @@ export async function POST(
 ) {
   try {
     const { id: friendId } = await params
-    const supabase = await createServerSupabaseClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return NextResponse.json({ error: "未認証" }, { status: 401 })
+    const auth = await getAuthenticatedOrgId()
+    if (!auth.ok) return auth.response
+    const { supabase, userId } = auth
 
     const { tagId } = await request.json()
     if (!tagId) return NextResponse.json({ error: "タグIDが必要です" }, { status: 400 })
@@ -19,7 +19,7 @@ export async function POST(
       {
         friend_id: friendId,
         tag_id: tagId,
-        assigned_by: user.id,
+        assigned_by: userId,
         auto_assigned: false,
       },
       { onConflict: "friend_id,tag_id" }
@@ -36,9 +36,9 @@ export async function POST(
 // タグ解除
 export async function DELETE(request: NextRequest) {
   try {
-    const supabase = await createServerSupabaseClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return NextResponse.json({ error: "未認証" }, { status: 401 })
+    const auth = await getAuthenticatedOrgId()
+    if (!auth.ok) return auth.response
+    const { supabase } = auth
 
     const { searchParams } = new URL(request.url)
     const tagId = searchParams.get("tagId")

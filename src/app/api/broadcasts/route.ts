@@ -1,21 +1,13 @@
 import { NextRequest, NextResponse } from "next/server"
-import { createServerSupabaseClient } from "@/lib/supabase/server"
+import { getAuthenticatedOrgId } from "@/lib/api/auth"
 import { pushMessage, multicast, broadcast } from "@/lib/line/client"
 
 // 配信履歴一覧
 export async function GET() {
   try {
-    const supabase = await createServerSupabaseClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return NextResponse.json({ error: "未認証" }, { status: 401 })
-
-    const { data: userData } = await supabase
-      .from("users")
-      .select("organization_id")
-      .eq("id", user.id)
-      .single()
-    if (!userData) return NextResponse.json({ error: "ユーザー情報が見つかりません" }, { status: 404 })
-    const orgId = userData.organization_id!
+    const auth = await getAuthenticatedOrgId()
+    if (!auth.ok) return auth.response
+    const { supabase, orgId } = auth
 
     const { data: broadcasts, error } = await supabase
       .from("broadcasts")
@@ -34,17 +26,9 @@ export async function GET() {
 // 配信作成・送信
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createServerSupabaseClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return NextResponse.json({ error: "未認証" }, { status: 401 })
-
-    const { data: userData } = await supabase
-      .from("users")
-      .select("organization_id")
-      .eq("id", user.id)
-      .single()
-    if (!userData) return NextResponse.json({ error: "ユーザー情報が見つかりません" }, { status: 404 })
-    const orgId = userData.organization_id!
+    const auth = await getAuthenticatedOrgId()
+    if (!auth.ok) return auth.response
+    const { supabase, orgId, userId } = auth
 
     const { title, messageText, targetType, targetFilter, scheduledAt } = await request.json()
     if (!messageText) return NextResponse.json({ error: "メッセージ本文は必須です" }, { status: 400 })
@@ -72,7 +56,7 @@ export async function POST(request: NextRequest) {
         target_filter: targetFilter || null,
         status: scheduledAt ? "draft" : "sending",
         scheduled_at: scheduledAt || null,
-        created_by: user.id,
+        created_by: userId,
       })
       .select()
       .single()

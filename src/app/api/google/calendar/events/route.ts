@@ -1,35 +1,12 @@
 import { NextRequest, NextResponse } from "next/server"
-import { createServerSupabaseClient } from "@/lib/supabase/server"
+import { getAuthenticatedOrgId } from "@/lib/api/auth"
 import { createCalendarEvent, listCalendarEvents } from "@/lib/google/calendar"
 
-async function getCalendarSettings(supabase: Awaited<ReturnType<typeof createServerSupabaseClient>>) {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
-    return { error: NextResponse.json({ error: "未認証" }, { status: 401 }) }
-  }
-
-  const { data: userData } = await supabase
-    .from("users")
-    .select("organization_id")
-    .eq("id", user.id)
-    .single()
-
-  if (!userData?.organization_id) {
-    return {
-      error: NextResponse.json(
-        { error: "ユーザー情報が見つかりません" },
-        { status: 404 }
-      ),
-    }
-  }
-
+async function getCalendarSettings(supabase: Parameters<never>[never] extends never ? Awaited<ReturnType<typeof import("@/lib/supabase/server").createServerSupabaseClient>> : never, orgId: string) {
   const { data: settings } = await supabase
     .from("google_calendar_settings")
     .select("*")
-    .eq("organization_id", userData.organization_id)
+    .eq("organization_id", orgId)
     .eq("sync_enabled", true)
     .single()
 
@@ -48,8 +25,11 @@ async function getCalendarSettings(supabase: Awaited<ReturnType<typeof createSer
 // List calendar events
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await createServerSupabaseClient()
-    const result = await getCalendarSettings(supabase)
+    const auth = await getAuthenticatedOrgId()
+    if (!auth.ok) return auth.response
+    const { supabase, orgId } = auth
+
+    const result = await getCalendarSettings(supabase, orgId)
     if (result.error) return result.error
 
     const { settings } = result
@@ -84,8 +64,11 @@ export async function GET(request: NextRequest) {
 // Create a new calendar event
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createServerSupabaseClient()
-    const result = await getCalendarSettings(supabase)
+    const auth = await getAuthenticatedOrgId()
+    if (!auth.ok) return auth.response
+    const { supabase, orgId } = auth
+
+    const result = await getCalendarSettings(supabase, orgId)
     if (result.error) return result.error
 
     const { settings } = result
