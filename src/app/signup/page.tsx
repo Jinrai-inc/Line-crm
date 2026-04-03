@@ -22,57 +22,29 @@ export default function SignupPage() {
     setLoading(true)
 
     try {
-      const supabase = createClient()
+      // サーバーサイドAPIで組織・ユーザー作成（RLSバイパス）
+      const res = await fetch("/api/auth/signup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password, displayName, organizationName }),
+      })
+      const json = await res.json()
 
-      // 1. Supabase Authでユーザー作成
-      const { data: authData, error: authError } = await supabase.auth.signUp({
+      if (!res.ok) {
+        setError(json.error || "登録に失敗しました")
+        return
+      }
+
+      // ログイン状態にする
+      const supabase = createClient()
+      const { error: loginError } = await supabase.auth.signInWithPassword({
         email,
         password,
-        options: {
-          data: {
-            display_name: displayName,
-            organization_name: organizationName,
-          },
-        },
       })
 
-      if (authError) {
-        if (authError.message.includes("already registered")) {
-          setError("このメールアドレスは既に登録されています")
-        } else {
-          setError(authError.message)
-        }
-        return
-      }
-
-      if (!authData.user) {
-        setError("ユーザーの作成に失敗しました")
-        return
-      }
-
-      // 2. 組織を作成
-      const { data: org, error: orgError } = await supabase
-        .from("organizations")
-        .insert({ name: organizationName })
-        .select()
-        .single()
-
-      if (orgError) {
-        setError("組織の作成に失敗しました: " + orgError.message)
-        return
-      }
-
-      // 3. usersテーブルにレコード作成
-      const { error: userError } = await supabase.from("users").insert({
-        id: authData.user.id,
-        organization_id: org.id,
-        email,
-        display_name: displayName,
-        role: "owner",
-      })
-
-      if (userError) {
-        setError("ユーザー情報の保存に失敗しました: " + userError.message)
+      if (loginError) {
+        // 登録は成功しているのでログインページへ
+        router.push("/login")
         return
       }
 
