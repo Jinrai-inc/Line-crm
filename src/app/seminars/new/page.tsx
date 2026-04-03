@@ -48,7 +48,15 @@ export default function SeminarNewPage() {
       const res = await fetch("/api/seminars", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify({
+          title: form.title,
+          description: form.description,
+          eventDate: form.date,
+          startTime: form.startTime,
+          endTime: form.endTime,
+          location: form.venue,
+          capacity: form.capacity,
+        }),
       })
       if (res.ok) {
         const json = await res.json()
