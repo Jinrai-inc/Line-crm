@@ -72,13 +72,14 @@ interface Tag {
 interface Friend {
   id: string
   line_user_id: string
-  line_display_name: string
   display_name: string | null
-  avatar_url: string | null
+  custom_name: string | null
+  picture_url: string | null
   status: "active" | "blocked" | "unfollowed"
   tags: Tag[]
   first_added_at: string
-  last_interaction_at: string | null
+  last_message_at: string | null
+  friend_tags?: { tag_id: string; tags: Tag }[]
 }
 
 interface FriendsResponse {
@@ -88,7 +89,7 @@ interface FriendsResponse {
   limit: number
 }
 
-type SortField = "display_name" | "first_added_at" | "last_interaction_at"
+type SortField = "display_name" | "first_added_at" | "last_message_at"
 type SortDirection = "asc" | "desc"
 
 const STATUS_MAP: Record<string, { label: string; variant: "default" | "destructive" | "secondary" | "outline" }> = {
@@ -120,7 +121,7 @@ export default function FriendsPage() {
 
   // Dialog state
   const [addDialogOpen, setAddDialogOpen] = useState(false)
-  const [addForm, setAddForm] = useState({ line_display_name: "", display_name: "" })
+  const [addForm, setAddForm] = useState({ display_name: "", custom_name: "" })
   const [addLoading, setAddLoading] = useState(false)
 
   const [bulkTagDialogOpen, setBulkTagDialogOpen] = useState(false)
@@ -143,8 +144,15 @@ export default function FriendsPage() {
 
       const res = await fetch(`/api/friends?${params}`)
       if (!res.ok) throw new Error("Fetch failed")
-      const json: FriendsResponse = await res.json()
-      setFriends(json.data)
+      const json = await res.json()
+      // friend_tags のネスト構造を tags 配列にマッピング
+      const mapped = (json.data || []).map((f: Record<string, unknown>) => ({
+        ...f,
+        tags: ((f.friend_tags as Array<{ tags: Tag }>) || [])
+          .map((ft) => ft.tags)
+          .filter(Boolean),
+      }))
+      setFriends(mapped)
       setTotal(json.total)
     } catch {
       // silently handle – could add toast later
@@ -235,7 +243,7 @@ export default function FriendsPage() {
   }
 
   const handleAddFriend = async () => {
-    if (!addForm.line_display_name.trim()) return
+    if (!addForm.display_name.trim()) return
     setAddLoading(true)
     try {
       const res = await fetch("/api/friends", {
@@ -245,7 +253,7 @@ export default function FriendsPage() {
       })
       if (res.ok) {
         setAddDialogOpen(false)
-        setAddForm({ line_display_name: "", display_name: "" })
+        setAddForm({ display_name: "", custom_name: "" })
         fetchFriends()
       }
     } finally {
@@ -316,9 +324,9 @@ export default function FriendsPage() {
                     <Label htmlFor="add-line-name">LINE表示名 *</Label>
                     <Input
                       id="add-line-name"
-                      value={addForm.line_display_name}
+                      value={addForm.display_name}
                       onChange={(e) =>
-                        setAddForm((f) => ({ ...f, line_display_name: e.target.value }))
+                        setAddForm((f) => ({ ...f, display_name: e.target.value }))
                       }
                       placeholder="LINE表示名を入力"
                     />
@@ -327,9 +335,9 @@ export default function FriendsPage() {
                     <Label htmlFor="add-display-name">表示名（カスタム）</Label>
                     <Input
                       id="add-display-name"
-                      value={addForm.display_name}
+                      value={addForm.custom_name}
                       onChange={(e) =>
-                        setAddForm((f) => ({ ...f, display_name: e.target.value }))
+                        setAddForm((f) => ({ ...f, custom_name: e.target.value }))
                       }
                       placeholder="管理用の表示名（任意）"
                     />
@@ -479,7 +487,7 @@ export default function FriendsPage() {
                     <SortButton field="first_added_at">追加日</SortButton>
                   </TableHead>
                   <TableHead>
-                    <SortButton field="last_interaction_at">最終やりとり</SortButton>
+                    <SortButton field="last_message_at">最終やりとり</SortButton>
                   </TableHead>
                   <TableHead className="w-10" />
                 </TableRow>
@@ -529,18 +537,18 @@ export default function FriendsPage() {
                               className="flex items-center gap-3 hover:opacity-80 transition-opacity"
                             >
                               <Avatar className="size-8">
-                                {friend.avatar_url && (
-                                  <AvatarImage src={friend.avatar_url} alt={friend.line_display_name} />
+                                {friend.picture_url && (
+                                  <AvatarImage src={friend.picture_url} alt={friend.display_name || ""} />
                                 )}
                                 <AvatarFallback>
-                                  {friend.line_display_name.charAt(0)}
+                                  {(friend.display_name || "?").charAt(0)}
                                 </AvatarFallback>
                               </Avatar>
-                              <span className="font-medium">{friend.line_display_name}</span>
+                              <span className="font-medium">{friend.display_name || "名前なし"}</span>
                             </Link>
                           </TableCell>
                           <TableCell className="text-gray-600">
-                            {friend.display_name || "-"}
+                            {friend.custom_name || "-"}
                           </TableCell>
                           <TableCell>
                             <Badge variant={status?.variant ?? "secondary"}>
@@ -566,8 +574,8 @@ export default function FriendsPage() {
                             {formatDateShort(friend.first_added_at)}
                           </TableCell>
                           <TableCell className="text-gray-600 text-sm">
-                            {friend.last_interaction_at
-                              ? formatRelativeTime(friend.last_interaction_at)
+                            {friend.last_message_at
+                              ? formatRelativeTime(friend.last_message_at)
                               : "-"}
                           </TableCell>
                           <TableCell>
@@ -653,25 +661,25 @@ export default function FriendsPage() {
                           />
                         </div>
                         <Avatar className="size-10">
-                          {friend.avatar_url && (
-                            <AvatarImage src={friend.avatar_url} alt={friend.line_display_name} />
+                          {friend.picture_url && (
+                            <AvatarImage src={friend.picture_url} alt={friend.display_name || ""} />
                           )}
                           <AvatarFallback>
-                            {friend.line_display_name.charAt(0)}
+                            {(friend.display_name || "?").charAt(0)}
                           </AvatarFallback>
                         </Avatar>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
                             <span className="font-medium truncate">
-                              {friend.line_display_name}
+                              {friend.display_name || "名前なし"}
                             </span>
                             <Badge variant={status?.variant ?? "secondary"} className="shrink-0">
                               {status?.label ?? friend.status}
                             </Badge>
                           </div>
-                          {friend.display_name && (
+                          {friend.custom_name && (
                             <p className="text-sm text-gray-500 truncate">
-                              {friend.display_name}
+                              {friend.custom_name}
                             </p>
                           )}
                           <div className="flex flex-wrap gap-1 mt-2">
@@ -687,9 +695,9 @@ export default function FriendsPage() {
                           </div>
                           <div className="flex items-center gap-3 mt-2 text-xs text-gray-400">
                             <span>追加: {formatDateShort(friend.first_added_at)}</span>
-                            {friend.last_interaction_at && (
+                            {friend.last_message_at && (
                               <span>
-                                最終: {formatRelativeTime(friend.last_interaction_at)}
+                                最終: {formatRelativeTime(friend.last_message_at)}
                               </span>
                             )}
                           </div>
