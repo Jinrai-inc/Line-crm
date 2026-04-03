@@ -32,6 +32,8 @@ import {
   Trash2,
   Wifi,
   WifiOff,
+  RefreshCw,
+  Users,
 } from "lucide-react"
 
 interface LineAccount {
@@ -91,6 +93,10 @@ export default function LineSettingsPage() {
 
   // Connection test per account
   const [testResults, setTestResults] = useState<Record<string, TestResult>>({})
+
+  // Sync state per account
+  const [syncingAccounts, setSyncingAccounts] = useState<Record<string, boolean>>({})
+  const [syncResults, setSyncResults] = useState<Record<string, { type: "success" | "error"; message: string } | null>>({})
 
   // 初期データ取得
   const fetchAccounts = useCallback(async () => {
@@ -321,6 +327,44 @@ export default function LineSettingsPage() {
     }
   }
 
+  // 友だち同期
+  const handleSync = async (account: LineAccount) => {
+    setSyncingAccounts((prev) => ({ ...prev, [account.id]: true }))
+    setSyncResults((prev) => ({ ...prev, [account.id]: null }))
+    try {
+      const res = await fetch("/api/settings/line/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lineAccountId: account.id }),
+      })
+      const data = await res.json()
+      if (res.ok && data.success) {
+        setSyncResults((prev) => ({
+          ...prev,
+          [account.id]: {
+            type: "success",
+            message: data.message || `${data.imported}人をインポートしました`,
+          },
+        }))
+        setToast({ type: "success", message: data.message })
+      } else {
+        setSyncResults((prev) => ({
+          ...prev,
+          [account.id]: { type: "error", message: data.error || "同期に失敗しました" },
+        }))
+        setToast({ type: "error", message: data.error || "同期に失敗しました" })
+      }
+    } catch {
+      setSyncResults((prev) => ({
+        ...prev,
+        [account.id]: { type: "error", message: "同期に失敗しました" },
+      }))
+      setToast({ type: "error", message: "同期に失敗しました" })
+    } finally {
+      setSyncingAccounts((prev) => ({ ...prev, [account.id]: false }))
+    }
+  }
+
   if (loading) {
     return (
       <AppLayout>
@@ -513,8 +557,8 @@ export default function LineSettingsPage() {
                       </div>
                     </div>
 
-                    {/* 接続テスト */}
-                    <div className="flex items-center gap-3 border-t border-gray-100 pt-3">
+                    {/* 接続テスト・友だち同期 */}
+                    <div className="flex flex-wrap items-center gap-3 border-t border-gray-100 pt-3">
                       <Button
                         variant="outline"
                         size="sm"
@@ -550,7 +594,40 @@ export default function LineSettingsPage() {
                           <span>{testResult.message}</span>
                         </div>
                       )}
+
+                      <div className="ml-auto">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleSync(account)}
+                          disabled={syncingAccounts[account.id]}
+                        >
+                          {syncingAccounts[account.id] ? (
+                            <>
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                              同期中...
+                            </>
+                          ) : (
+                            <>
+                              <Users className="h-4 w-4" />
+                              友だち同期
+                            </>
+                          )}
+                        </Button>
+                      </div>
                     </div>
+                    {syncResults[account.id] && (
+                      <div className={`flex items-center gap-2 text-sm border-t border-gray-100 pt-3 ${
+                        syncResults[account.id]!.type === "success" ? "text-green-700" : "text-red-700"
+                      }`}>
+                        {syncResults[account.id]!.type === "success" ? (
+                          <CheckCircle className="h-4 w-4" />
+                        ) : (
+                          <XCircle className="h-4 w-4" />
+                        )}
+                        <span>{syncResults[account.id]!.message}</span>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               )
