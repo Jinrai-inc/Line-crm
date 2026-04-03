@@ -149,24 +149,73 @@ async function handleMessage(
   const userId = event.source.userId
   if (!userId || !event.message) return
 
-  // last_message_at を更新
-  await supabase
-    .from("friends")
-    .update({ last_message_at: new Date().toISOString() })
-    .eq("organization_id", context.organizationId)
-    .eq("line_user_id", userId)
-
-  // メッセージログ記録
-  const { data: friend } = await supabase
+  // 友だちが存在しなければ自動登録
+  const { data: existingFriend } = await supabase
     .from("friends")
     .select("id")
     .eq("organization_id", context.organizationId)
     .eq("line_user_id", userId)
     .single()
 
+  let friendId = existingFriend?.id
+
+  if (!friendId) {
+    // プロフィール取得して新規登録
+    try {
+      const profile = await getProfile(userId, {
+        accessToken: context.channelAccessToken,
+      })
+      const { data: newFriend } = await supabase
+        .from("friends")
+        .upsert(
+          {
+            organization_id: context.organizationId,
+            line_account_id: context.lineAccountId,
+            line_user_id: userId,
+            display_name: profile.displayName,
+            picture_url: profile.pictureUrl,
+            status: "active",
+            first_added_at: new Date().toISOString(),
+            last_message_at: new Date().toISOString(),
+          },
+          { onConflict: "organization_id,line_user_id" }
+        )
+        .select("id")
+        .single()
+      friendId = newFriend?.id
+    } catch {
+      // プロフィール取得失敗時は最低限の情報で登録
+      const { data: newFriend } = await supabase
+        .from("friends")
+        .upsert(
+          {
+            organization_id: context.organizationId,
+            line_account_id: context.lineAccountId,
+            line_user_id: userId,
+            display_name: "LINE User",
+            status: "active",
+            first_added_at: new Date().toISOString(),
+            last_message_at: new Date().toISOString(),
+          },
+          { onConflict: "organization_id,line_user_id" }
+        )
+        .select("id")
+        .single()
+      friendId = newFriend?.id
+    }
+  } else {
+    // 既存友だちのlast_message_atを更新
+    await supabase
+      .from("friends")
+      .update({ last_message_at: new Date().toISOString() })
+      .eq("organization_id", context.organizationId)
+      .eq("line_user_id", userId)
+  }
+
+  // メッセージログ記録
   await supabase.from("message_logs").insert({
     organization_id: context.organizationId,
-    friend_id: friend?.id,
+    friend_id: friendId || null,
     line_user_id: userId,
     event_type: "message",
     message_type: event.message.type,
