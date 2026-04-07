@@ -174,13 +174,60 @@ async function handleFollow(
     }
   }
 
-  // ウェルカムメッセージ送信
+  // ウェルカムメッセージ送信（管理画面の設定を使用）
   if (event.replyToken) {
-    await replyMessage(
-      event.replyToken,
-      [createWelcomeMessage(context.channelName)],
-      { accessToken: context.channelAccessToken }
-    )
+    const { data: greetingSettings } = await (supabase
+      .from("greeting_settings" as never)
+      .select("*")
+      .eq("organization_id" as never, context.organizationId)
+      .single() as unknown as Promise<{
+        data: {
+          enabled: boolean; message: string | null;
+          schedule_enabled: boolean; schedule_start: string | null;
+          schedule_end: string | null; schedule_message: string | null;
+        } | null
+        error: unknown
+      }>)
+
+    const gs = greetingSettings
+    let greetingDisabled = false
+    let customMessage: string | null = null
+
+    if (gs) {
+      if (!gs.enabled) {
+        greetingDisabled = true
+      } else {
+        // 期間指定メッセージの判定
+        if (gs.schedule_enabled && gs.schedule_start && gs.schedule_end && gs.schedule_message) {
+          const now = new Date()
+          const start = new Date(gs.schedule_start)
+          const end = new Date(gs.schedule_end)
+          if (now >= start && now <= end) {
+            customMessage = gs.schedule_message
+          }
+        }
+        // 期間指定でなければ通常カスタムメッセージ
+        if (!customMessage && gs.message) {
+          customMessage = gs.message
+        }
+      }
+    }
+
+    if (!greetingDisabled) {
+      if (customMessage) {
+        await replyMessage(
+          event.replyToken,
+          [{ type: "text", text: customMessage }],
+          { accessToken: context.channelAccessToken }
+        )
+      } else {
+        await replyMessage(
+          event.replyToken,
+          [createWelcomeMessage(context.channelName)],
+          { accessToken: context.channelAccessToken }
+        )
+      }
+    }
   }
 
   // メッセージログ記録

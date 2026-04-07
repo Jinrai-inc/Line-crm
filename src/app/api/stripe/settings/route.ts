@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
     const { supabase, orgId } = auth
 
     const body = await request.json()
-    const { secretKey, publishableKey, webhookSecret, paymentAutoEnabled, paymentAutoMessage, paymentAutoUrl } = body
+    const { secretKey, publishableKey, webhookSecret, paymentAutoEnabled, paymentAutoMessage, paymentAutoUrl, paymentAutoButtonText, paymentAutoTitle } = body
 
     if (!secretKey || !publishableKey) {
       return NextResponse.json({ error: "シークレットキーと公開キーは必須です" }, { status: 400 })
@@ -60,6 +60,8 @@ export async function POST(request: NextRequest) {
       settingsData.payment_auto_enabled = paymentAutoEnabled
       settingsData.payment_auto_message = paymentAutoMessage || null
       settingsData.payment_auto_url = paymentAutoUrl || null
+      settingsData.payment_auto_button_text = paymentAutoButtonText || null
+      settingsData.payment_auto_title = paymentAutoTitle || null
     }
 
     if (existing) {

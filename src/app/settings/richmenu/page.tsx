@@ -34,6 +34,8 @@ import {
   XCircle,
   LayoutGrid,
   Upload,
+  Copy,
+  Pencil,
 } from "lucide-react"
 import { useAccentColor } from "@/hooks/use-accent-color"
 
@@ -54,12 +56,20 @@ interface AreaConfig {
   action: AreaAction
 }
 
+interface RichMenuApiArea {
+  bounds: { x: number; y: number; width: number; height: number }
+  action: { type: string; text?: string; uri?: string; data?: string; label?: string; [key: string]: unknown }
+}
+
 interface RichMenu {
   id: string
+  richMenuId?: string
   name: string
   chatBarText: string
+  size?: { width: number; height: number }
   template?: Template
   areas?: AreaConfig[]
+  rawAreas?: RichMenuApiArea[]
 }
 
 interface CreateFormData {
@@ -333,7 +343,16 @@ export default function RichMenuSettingsPage() {
       const res = await fetch("/api/richmenu")
       if (!res.ok) throw new Error("取得に失敗しました")
       const data = await res.json()
-      setRichMenus(data.data || [])
+      // LINE APIからの生データをRichMenu型にマップ
+      const menus = (data.data || []).map((m: Record<string, unknown>) => ({
+        id: (m as { richMenuId?: string }).richMenuId || (m as { id?: string }).id || "",
+        richMenuId: (m as { richMenuId?: string }).richMenuId,
+        name: (m as { name?: string }).name || "",
+        chatBarText: (m as { chatBarText?: string }).chatBarText || "",
+        size: m.size as { width: number; height: number } | undefined,
+        rawAreas: m.areas as RichMenuApiArea[] | undefined,
+      }))
+      setRichMenus(menus)
       setDefaultRichMenuId(data.defaultRichMenuId ?? null)
     } catch (error) {
       console.error("リッチメニューの取得に失敗:", error)
@@ -414,6 +433,42 @@ export default function RichMenuSettingsPage() {
     setFormData({
       ...INITIAL_FORM,
       areas: makeEmptyAreas(INITIAL_FORM.template),
+    })
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ""
+    }
+    setDialogOpen(true)
+  }
+
+  /** 既存リッチメニューを複製して編集 */
+  const openDuplicateDialog = (menu: RichMenu) => {
+    // テンプレートの推定: sizeとareasから
+    let template: Template = "6-grid"
+    const areaCount = menu.rawAreas?.length ?? 0
+    if (areaCount <= 2) template = "2-grid"
+    else if (areaCount <= 3) template = "3-grid"
+    else template = "6-grid"
+
+    // rawAreasからAreaConfigに変換
+    const areas: AreaConfig[] = menu.rawAreas
+      ? menu.rawAreas.map((a) => ({
+          action: {
+            type: a.action.type as ActionType,
+            text: a.action.text,
+            uri: a.action.uri,
+            data: a.action.data,
+            label: a.action.label,
+          },
+        }))
+      : makeEmptyAreas(template)
+
+    setFormData({
+      name: `${menu.name}（コピー）`,
+      chatBarText: menu.chatBarText,
+      template,
+      areas,
+      setAsDefault: false,
+      imageFile: null,
     })
     if (fileInputRef.current) {
       fileInputRef.current.value = ""
@@ -636,6 +691,15 @@ export default function RichMenuSettingsPage() {
                         )}
                         <Button
                           variant="ghost"
+                          size="sm"
+                          onClick={() => openDuplicateDialog(menu)}
+                          title="複製して編集"
+                        >
+                          <Pencil className="h-4 w-4" />
+                          <span className="ml-1 text-xs">編集</span>
+                        </Button>
+                        <Button
+                          variant="ghost"
                           size="icon"
                           onClick={() => openDeleteDialog(menu)}
                           title="削除"
@@ -665,12 +729,24 @@ export default function RichMenuSettingsPage() {
                         </p>
                       </div>
                     </div>
-                    {/* Placeholder for image */}
-                    <div className="mt-4 flex h-24 items-center justify-center rounded-lg border border-dashed border-gray-300 bg-gray-50">
-                      <span className="text-xs text-gray-400">
-                        {menu.name} のリッチメニュー画像
-                      </span>
-                    </div>
+                    {/* エリアアクション情報 */}
+                    {menu.rawAreas && menu.rawAreas.length > 0 && (
+                      <div className="mt-4 space-y-1.5">
+                        <p className="text-xs font-medium text-gray-500">エリアアクション</p>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                          {menu.rawAreas.map((area, i) => (
+                            <div key={i} className="text-xs bg-gray-50 border rounded px-2 py-1.5">
+                              <span className="font-medium text-gray-700">エリア{i + 1}</span>
+                              <span className="text-gray-400 ml-1">
+                                {area.action.type === "message" && `テキスト: ${area.action.text || "-"}`}
+                                {area.action.type === "uri" && `URL: ${(area.action.uri || "").slice(0, 30)}...`}
+                                {area.action.type === "postback" && `PB: ${area.action.label || area.action.data || "-"}`}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               )

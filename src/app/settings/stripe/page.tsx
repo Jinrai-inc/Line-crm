@@ -34,6 +34,8 @@ export default function StripeSettingsPage() {
   const [paymentAutoEnabled, setPaymentAutoEnabled] = useState(false)
   const [paymentAutoMessage, setPaymentAutoMessage] = useState("")
   const [paymentAutoUrl, setPaymentAutoUrl] = useState("")
+  const [paymentAutoButtonText, setPaymentAutoButtonText] = useState("")
+  const [paymentAutoTitle, setPaymentAutoTitle] = useState("")
 
   // 初期データ取得
   useEffect(() => {
@@ -49,6 +51,8 @@ export default function StripeSettingsPage() {
           setPaymentAutoEnabled(data.settings.payment_auto_enabled || false)
           setPaymentAutoMessage(data.settings.payment_auto_message || "")
           setPaymentAutoUrl(data.settings.payment_auto_url || "")
+          setPaymentAutoButtonText(data.settings.payment_auto_button_text || "")
+          setPaymentAutoTitle(data.settings.payment_auto_title || "")
         }
         setWebhookUrl(
           `${process.env.NEXT_PUBLIC_APP_URL || window.location.origin}/api/stripe/webhook`
@@ -142,6 +146,8 @@ export default function StripeSettingsPage() {
           paymentAutoEnabled,
           paymentAutoMessage,
           paymentAutoUrl,
+          paymentAutoButtonText,
+          paymentAutoTitle,
         }),
       })
       const data = await res.json()
@@ -367,23 +373,23 @@ export default function StripeSettingsPage() {
 
           {paymentAutoEnabled && (
             <div className="space-y-4 border-t border-gray-100 pt-4">
-              {/* 会議URL */}
+              {/* タイトル */}
               <div>
                 <label
-                  htmlFor="paymentAutoUrl"
+                  htmlFor="paymentAutoTitle"
                   className="block text-sm font-medium text-gray-700 mb-1"
                 >
-                  会議URL <span className="text-red-500">*</span>
+                  タイトル
                 </label>
                 <input
-                  id="paymentAutoUrl"
-                  type="url"
-                  value={paymentAutoUrl}
-                  onChange={(e) => setPaymentAutoUrl(e.target.value)}
-                  placeholder="https://zoom.us/j/... や https://meet.google.com/..."
+                  id="paymentAutoTitle"
+                  type="text"
+                  value={paymentAutoTitle}
+                  onChange={(e) => setPaymentAutoTitle(e.target.value)}
+                  placeholder="お支払い確認"
                   className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-green-500 focus:ring-1 focus:ring-green-500 outline-none"
                 />
-                <p className="mt-1 text-xs text-gray-400">Zoom、Google Meet等の会議URLを入力してください</p>
+                <p className="mt-1 text-xs text-gray-400">空欄の場合は「お支払い確認」が使用されます</p>
               </div>
 
               {/* メッセージ本文 */}
@@ -399,23 +405,65 @@ export default function StripeSettingsPage() {
                   value={paymentAutoMessage}
                   onChange={(e) => setPaymentAutoMessage(e.target.value)}
                   placeholder="お支払いありがとうございます。以下のURLから会議にご参加ください。"
-                  rows={3}
+                  rows={4}
                   className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-green-500 focus:ring-1 focus:ring-green-500 outline-none resize-none"
                 />
                 <p className="mt-1 text-xs text-gray-400">空欄の場合はデフォルトメッセージが使用されます</p>
+              </div>
+
+              {/* 会議URL */}
+              <div>
+                <label
+                  htmlFor="paymentAutoUrl"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  ボタンのリンク先URL
+                </label>
+                <input
+                  id="paymentAutoUrl"
+                  type="url"
+                  value={paymentAutoUrl}
+                  onChange={(e) => setPaymentAutoUrl(e.target.value)}
+                  placeholder="https://zoom.us/j/... や https://meet.google.com/..."
+                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-green-500 focus:ring-1 focus:ring-green-500 outline-none"
+                />
+                <p className="mt-1 text-xs text-gray-400">Zoom、Google Meet、予約ページ等のURLを入力してください</p>
+              </div>
+
+              {/* ボタンテキスト */}
+              <div>
+                <label
+                  htmlFor="paymentAutoButtonText"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  ボタンテキスト
+                </label>
+                <input
+                  id="paymentAutoButtonText"
+                  type="text"
+                  value={paymentAutoButtonText}
+                  onChange={(e) => setPaymentAutoButtonText(e.target.value)}
+                  placeholder="会議URLを開く"
+                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-green-500 focus:ring-1 focus:ring-green-500 outline-none"
+                />
+                <p className="mt-1 text-xs text-gray-400">空欄の場合は「会議URLを開く」が使用されます</p>
               </div>
 
               {/* プレビュー */}
               <div className="rounded-lg border border-green-200 bg-green-50 p-4">
                 <p className="text-xs font-medium text-green-800 mb-2">LINEメッセージプレビュー</p>
                 <div className="rounded-lg bg-white border border-green-100 p-3 space-y-2">
-                  <p className="text-sm font-bold text-green-600">お支払い確認</p>
-                  <p className="text-sm text-gray-700">
+                  <p className="text-sm font-bold text-green-600">
+                    {paymentAutoTitle || "お支払い確認"}
+                  </p>
+                  <p className="text-sm text-gray-700 whitespace-pre-wrap">
                     {paymentAutoMessage || "お支払いありがとうございます。以下のURLから会議にご参加ください。"}
                   </p>
-                  <div className="rounded-md bg-green-500 text-white text-center py-2 text-sm font-medium">
-                    会議URLを開く
-                  </div>
+                  {paymentAutoUrl && (
+                    <div className="rounded-md bg-green-500 text-white text-center py-2 text-sm font-medium">
+                      {paymentAutoButtonText || "会議URLを開く"}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

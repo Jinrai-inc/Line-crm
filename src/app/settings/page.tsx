@@ -17,6 +17,7 @@ import {
   Check,
   Webhook,
   ExternalLink,
+  HandHeart,
 } from "lucide-react"
 
 interface SettingsMenuItem {
@@ -68,6 +69,14 @@ const settingsMenuItems: SettingsMenuItem[] = [
     icon: <Users className="h-6 w-6" />,
     iconBgColor: "bg-orange-100",
     iconColor: "text-orange-600",
+  },
+  {
+    title: "挨拶メッセージ",
+    description: "友だち追加時の自動メッセージを設定・期間指定ができます",
+    href: "/settings/greeting",
+    icon: <HandHeart className="h-6 w-6" />,
+    iconBgColor: "bg-pink-100",
+    iconColor: "text-pink-600",
   },
   {
     title: "自動タグ付与",
