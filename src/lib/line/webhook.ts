@@ -105,7 +105,11 @@ async function handleFollow(
     .select("*")
     .eq("organization_id" as never, context.organizationId)
     .eq("enabled" as never, true) as unknown as Promise<{
-      data: Array<{ id: string; tag_id: string | null; tag_name: string; duration_minutes: number; created_at: string }> | null
+      data: Array<{
+        id: string; tag_id: string | null; tag_name: string;
+        duration_minutes: number | null; schedule_type: string | null;
+        start_at: string | null; end_at: string | null; created_at: string
+      }> | null
       error: unknown
     }>)
 
@@ -120,9 +124,25 @@ async function handleFollow(
 
     if (followFriend) {
       for (const rule of autoTagRules) {
-        const ruleCreated = new Date(rule.created_at)
-        const expiresAt = new Date(ruleCreated.getTime() + rule.duration_minutes * 60 * 1000)
-        if (now <= expiresAt) {
+        let isWithinWindow = false
+
+        if (rule.schedule_type === "scheduled") {
+          // 指定時間帯モード: start_at〜end_atの間か判定
+          if (rule.start_at && rule.end_at) {
+            const startAt = new Date(rule.start_at)
+            const endAt = new Date(rule.end_at)
+            isWithinWindow = now >= startAt && now <= endAt
+          }
+        } else {
+          // 従来の期間モード: created_at + duration_minutes
+          if (rule.duration_minutes) {
+            const ruleCreated = new Date(rule.created_at)
+            const expiresAt = new Date(ruleCreated.getTime() + rule.duration_minutes * 60 * 1000)
+            isWithinWindow = now <= expiresAt
+          }
+        }
+
+        if (isWithinWindow) {
           // ルール有効期間内 → タグ付与
           let ruleTagId = rule.tag_id
           if (!ruleTagId) {

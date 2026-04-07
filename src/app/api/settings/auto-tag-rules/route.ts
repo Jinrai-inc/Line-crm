@@ -4,7 +4,9 @@ import { createAdminClient } from "@/lib/supabase/server"
 
 // auto_tag_rules テーブル:
 // id UUID PK, organization_id UUID, tag_id UUID, tag_name TEXT,
-// duration_minutes INT, enabled BOOLEAN, created_at TIMESTAMPTZ, updated_at TIMESTAMPTZ
+// duration_minutes INT, schedule_type TEXT ("duration"|"scheduled"),
+// start_at TIMESTAMPTZ, end_at TIMESTAMPTZ,
+// enabled BOOLEAN, created_at TIMESTAMPTZ, updated_at TIMESTAMPTZ
 
 // ルール一覧取得
 export async function GET() {
@@ -24,6 +26,9 @@ export async function GET() {
           tag_id: string | null
           tag_name: string
           duration_minutes: number
+          schedule_type: string | null
+          start_at: string | null
+          end_at: string | null
           enabled: boolean
           created_at: string
         }> | null
@@ -46,10 +51,18 @@ export async function POST(request: NextRequest) {
     const { orgId } = auth
     const admin = createAdminClient()
 
-    const { tagName, durationMinutes, enabled } = await request.json()
+    const { tagName, durationMinutes, enabled, scheduleType, startAt, endAt } = await request.json()
 
-    if (!tagName || !durationMinutes) {
-      return NextResponse.json({ error: "タグ名と時間は必須です" }, { status: 400 })
+    if (!tagName) {
+      return NextResponse.json({ error: "タグ名は必須です" }, { status: 400 })
+    }
+
+    if (scheduleType === "scheduled") {
+      if (!startAt || !endAt) {
+        return NextResponse.json({ error: "開始時刻と終了時刻は必須です" }, { status: 400 })
+      }
+    } else if (!durationMinutes) {
+      return NextResponse.json({ error: "時間は必須です" }, { status: 400 })
     }
 
     // タグを自動作成（存在しなければ）
@@ -69,15 +82,27 @@ export async function POST(request: NextRequest) {
       tag = newTag
     }
 
+    const insertData: Record<string, unknown> = {
+      organization_id: orgId,
+      tag_id: tag?.id || null,
+      tag_name: tagName,
+      schedule_type: scheduleType || "duration",
+      enabled: enabled ?? true,
+    }
+
+    if (scheduleType === "scheduled") {
+      insertData.start_at = startAt
+      insertData.end_at = endAt
+      insertData.duration_minutes = null
+    } else {
+      insertData.duration_minutes = durationMinutes
+      insertData.start_at = null
+      insertData.end_at = null
+    }
+
     const { data, error } = await (admin
       .from("auto_tag_rules" as never)
-      .insert({
-        organization_id: orgId,
-        tag_id: tag?.id || null,
-        tag_name: tagName,
-        duration_minutes: durationMinutes,
-        enabled: enabled ?? true,
-      } as never)
+      .insert(insertData as never)
       .select("*")
       .single() as unknown as Promise<{ data: unknown; error: unknown }>)
 
