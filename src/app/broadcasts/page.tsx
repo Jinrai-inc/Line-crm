@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { FileDropzone } from "@/components/ui/file-dropzone"
 import {
   Card,
   CardContent,
@@ -128,6 +129,7 @@ export default function BroadcastsPage() {
   const [messageText, setMessageText] = useState("")
   const [imageUrl, setImageUrl] = useState("")
   const [previewImageUrl, setPreviewImageUrl] = useState("")
+  const [uploadedFile, setUploadedFile] = useState<{ url: string; fileName: string; fileSize: number; mimeType: string } | null>(null)
   const [targetType, setTargetType] = useState("all")
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([])
   const [selectedSeminarId, setSelectedSeminarId] = useState("")
@@ -236,6 +238,7 @@ export default function BroadcastsPage() {
         setMessageText("")
         setImageUrl("")
         setPreviewImageUrl("")
+        setUploadedFile(null)
         setTargetType("all")
         setSelectedTagIds([])
         setSelectedSeminarId("")
@@ -369,53 +372,66 @@ export default function BroadcastsPage() {
               {/* 画像・動画メッセージ */}
               {(messageType === "image" || messageType === "video") && (
                 <div className="space-y-4">
+                  {/* ドラッグ＆ドロップアップロード */}
                   <div className="space-y-2">
-                    <Label htmlFor="media-url">
-                      {messageType === "image" ? "画像URL" : "動画URL"} *
+                    <Label>
+                      {messageType === "image" ? "画像ファイル" : "動画ファイル"}
                     </Label>
-                    <Input
-                      id="media-url"
-                      placeholder={messageType === "image" ? "https://example.com/image.jpg" : "https://example.com/video.mp4"}
-                      value={imageUrl}
-                      onChange={(e) => setImageUrl(e.target.value)}
+                    <FileDropzone
+                      accept={
+                        messageType === "image"
+                          ? "image/jpeg,image/png,image/gif,image/webp"
+                          : "video/mp4"
+                      }
+                      maxSizeMB={messageType === "image" ? 10 : 200}
+                      accentColor={accentColor}
+                      uploadedFile={uploadedFile}
+                      onUpload={(file) => {
+                        setUploadedFile(file)
+                        setImageUrl(file.url)
+                        setPreviewImageUrl("")
+                      }}
+                      onRemove={() => {
+                        setUploadedFile(null)
+                        setImageUrl("")
+                        setPreviewImageUrl("")
+                      }}
                     />
-                    <p className="text-xs text-gray-500">
-                      {messageType === "image"
-                        ? "HTTPS公開URLを指定してください。JPEG/PNG形式、最大10MB"
-                        : "HTTPS公開URLを指定してください。MP4形式、最大200MB"}
-                    </p>
                   </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="preview-url">
-                      プレビュー画像URL（任意）
-                    </Label>
-                    <Input
-                      id="preview-url"
-                      placeholder="https://example.com/preview.jpg"
-                      value={previewImageUrl}
-                      onChange={(e) => setPreviewImageUrl(e.target.value)}
-                    />
-                    <p className="text-xs text-gray-500">
-                      未指定の場合、{messageType === "image" ? "元画像" : "動画URL"}がそのまま使用されます
-                    </p>
-                  </div>
-
-                  {/* 画像プレビュー */}
-                  {messageType === "image" && imageUrl && (
-                    <div className="space-y-2">
-                      <Label>プレビュー</Label>
-                      <div className="border rounded-lg p-3 bg-gray-50 max-w-xs">
-                        <img
-                          src={imageUrl}
-                          alt="プレビュー"
-                          className="rounded-lg max-h-48 object-contain w-full"
-                          onError={(e) => {
-                            (e.target as HTMLImageElement).style.display = "none"
-                          }}
-                        />
+                  {/* URL直接入力（折りたたみ） */}
+                  {!uploadedFile && (
+                    <details className="group">
+                      <summary className="text-xs text-gray-500 cursor-pointer hover:text-gray-700 transition-colors">
+                        URLを直接入力する場合はこちら
+                      </summary>
+                      <div className="mt-3 space-y-3 pl-3 border-l-2 border-gray-200">
+                        <div className="space-y-1.5">
+                          <Label htmlFor="media-url" className="text-xs">
+                            {messageType === "image" ? "画像URL" : "動画URL"}
+                          </Label>
+                          <Input
+                            id="media-url"
+                            placeholder={messageType === "image" ? "https://example.com/image.jpg" : "https://example.com/video.mp4"}
+                            value={imageUrl}
+                            onChange={(e) => setImageUrl(e.target.value)}
+                            className="h-9"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label htmlFor="preview-url" className="text-xs">
+                            プレビュー画像URL（任意）
+                          </Label>
+                          <Input
+                            id="preview-url"
+                            placeholder="https://example.com/preview.jpg"
+                            value={previewImageUrl}
+                            onChange={(e) => setPreviewImageUrl(e.target.value)}
+                            className="h-9"
+                          />
+                        </div>
                       </div>
-                    </div>
+                    </details>
                   )}
 
                   {/* テキスト付与オプション */}
