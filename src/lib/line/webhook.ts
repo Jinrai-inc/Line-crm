@@ -750,7 +750,7 @@ async function handlePostback(
         choices: Array<{
           text: string; tagName: string;
           rewardMessage?: string; rewardUrl?: string;
-          file?: { url: string; mimeType: string } | null; fileLink?: string;
+          file?: { url: string; fileName?: string; mimeType?: string } | null; fileLink?: string;
         }>
       }> = []
 
@@ -848,19 +848,46 @@ async function handlePostback(
         raw_event: JSON.parse(JSON.stringify(event)),
       })
 
-      // 特典の有無を判定（hasReward フラグ or 特典情報の存在）
-      const hasReward = question.hasReward !== false && (choice.rewardMessage || choice.rewardUrl)
+      // 特典の有無を判定
+      const hasRewardContent = choice.rewardMessage || choice.rewardUrl || choice.file
+      const hasReward = question.hasReward === true && hasRewardContent
 
-      // replyToken で特典 or 回答確認メッセージを送信
+      // replyToken で特典メッセージを送信
       let replyUsed = false
       if (event.replyToken && hasReward) {
-        const rewardMsg = choice.rewardMessage || "アンケートにご回答いただきありがとうございます！"
-        await replyMessage(
-          event.replyToken,
-          [createSurveyRewardMessage(rewardMsg, choice.rewardUrl)],
-          { accessToken: context.channelAccessToken }
-        )
-        replyUsed = true
+        const replyMessages: unknown[] = []
+
+        // 添付ファイルがある場合は画像/PDFメッセージを送信
+        if (choice.file && choice.file.url) {
+          if (choice.file.mimeType?.startsWith("image/")) {
+            replyMessages.push({
+              type: "image",
+              originalContentUrl: choice.file.url,
+              previewImageUrl: choice.file.url,
+            })
+          } else {
+            // PDF等のファイルはURLをテキストで送信
+            replyMessages.push({
+              type: "text",
+              text: `📎 ${choice.file.fileName || "ファイル"}\n${choice.file.url}`,
+            })
+          }
+        }
+
+        // 特典メッセージ or URL がある場合
+        if (choice.rewardMessage || choice.rewardUrl) {
+          const rewardMsg = choice.rewardMessage || "アンケートにご回答いただきありがとうございます！"
+          replyMessages.push(createSurveyRewardMessage(rewardMsg, choice.rewardUrl))
+        }
+
+        if (replyMessages.length > 0) {
+          await replyMessage(
+            event.replyToken,
+            replyMessages,
+            { accessToken: context.channelAccessToken }
+          )
+          replyUsed = true
+        }
       }
 
       // 次の質問があれば送信（段階的送信）
