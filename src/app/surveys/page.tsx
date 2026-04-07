@@ -37,19 +37,31 @@ import {
   GripVertical,
   Pencil,
   Copy,
+  Image as ImageIcon,
+  Link as LinkIcon,
 } from "lucide-react"
 import Link from "next/link"
+
+interface UploadedFile {
+  url: string
+  fileName: string
+  fileSize: number
+  mimeType: string
+}
 
 interface Choice {
   text: string
   tagName: string
   rewardMessage: string
   rewardUrl: string
+  file?: UploadedFile | null
+  fileLink?: string
 }
 
 interface Question {
   label: string
   choices: Choice[]
+  hasReward: boolean
 }
 
 interface SurveyData {
@@ -62,7 +74,7 @@ interface SurveyData {
   updated_at: string
 }
 
-const emptyChoice: Choice = { text: "", tagName: "", rewardMessage: "", rewardUrl: "" }
+const emptyChoice: Choice = { text: "", tagName: "", rewardMessage: "", rewardUrl: "", file: null, fileLink: "" }
 
 export default function SurveysPage() {
   const accentColor = useAccentColor()
@@ -114,7 +126,7 @@ export default function SurveysPage() {
   function openCreateEditor() {
     setEditingSurvey(null)
     setTitle("")
-    setQuestions([{ label: "", choices: [{ ...emptyChoice }, { ...emptyChoice }] }])
+    setQuestions([{ label: "", choices: [{ ...emptyChoice }, { ...emptyChoice }], hasReward: false }])
     setSaved(false)
     setEditorOpen(true)
   }
@@ -122,9 +134,19 @@ export default function SurveysPage() {
   function openEditEditor(survey: SurveyData) {
     setEditingSurvey(survey)
     setTitle(survey.title)
-    const parsed = typeof survey.questions === "string"
+    const raw = typeof survey.questions === "string"
       ? JSON.parse(survey.questions)
       : survey.questions || []
+    // 既存データに hasReward がない場合はデフォルト値を設定
+    const parsed = raw.map((q: Question) => ({
+      ...q,
+      hasReward: q.hasReward ?? (q.choices?.some((c: Choice) => c.rewardMessage || c.rewardUrl) || false),
+      choices: (q.choices || []).map((c: Choice) => ({
+        ...c,
+        file: c.file || null,
+        fileLink: c.fileLink || "",
+      })),
+    }))
     setQuestions(parsed)
     setSaved(false)
     setEditorOpen(true)
@@ -216,7 +238,7 @@ export default function SurveysPage() {
 
   // Question CRUD
   function addQuestion() {
-    setQuestions([...questions, { label: "", choices: [{ ...emptyChoice }, { ...emptyChoice }] }])
+    setQuestions([...questions, { label: "", choices: [{ ...emptyChoice }, { ...emptyChoice }], hasReward: false }])
   }
   function removeQuestion(qIdx: number) {
     setQuestions(questions.filter((_, i) => i !== qIdx))
@@ -234,6 +256,14 @@ export default function SurveysPage() {
     setQuestions(questions.map((q, i) =>
       i === qIdx ? { ...q, choices: q.choices.map((c, ci) => ci === cIdx ? { ...c, [field]: value } : c) } : q
     ))
+  }
+  function updateChoiceFile(qIdx: number, cIdx: number, file: UploadedFile | null) {
+    setQuestions(questions.map((q, i) =>
+      i === qIdx ? { ...q, choices: q.choices.map((c, ci) => ci === cIdx ? { ...c, file } : c) } : q
+    ))
+  }
+  function toggleHasReward(qIdx: number) {
+    setQuestions(questions.map((q, i) => i === qIdx ? { ...q, hasReward: !q.hasReward } : q))
   }
 
   function getQuestionCount(survey: SurveyData): number {
@@ -385,6 +415,18 @@ export default function SurveysPage() {
                     placeholder="例: あなたの性別を教えてください"
                   />
 
+                  {/* 特典トグル */}
+                  <div className="flex items-center justify-between px-1">
+                    <Label className="text-xs flex items-center gap-1.5 text-gray-600">
+                      <Gift className="h-3.5 w-3.5" />
+                      特典を付ける
+                    </Label>
+                    <Switch
+                      checked={question.hasReward}
+                      onCheckedChange={() => toggleHasReward(qIdx)}
+                    />
+                  </div>
+
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <Label className="text-xs text-gray-500">選択肢</Label>
@@ -431,26 +473,60 @@ export default function SurveysPage() {
                             />
                           </div>
                         </div>
+
+                        {/* ファイル添付 */}
                         <div className="space-y-1">
                           <Label className="text-xs flex items-center gap-1">
-                            <Gift className="h-3 w-3" />特典メッセージ
+                            <ImageIcon className="h-3 w-3" />添付ファイル
                           </Label>
-                          <Input
-                            value={choice.rewardMessage}
-                            onChange={(e) => updateChoice(qIdx, cIdx, "rewardMessage", e.target.value)}
-                            placeholder="選択後に送るメッセージ（任意）"
-                            className="h-8"
+                          <FileDropzone
+                            onUpload={(file) => updateChoiceFile(qIdx, cIdx, file)}
+                            onRemove={() => updateChoiceFile(qIdx, cIdx, null)}
+                            uploadedFile={choice.file}
+                            accentColor={accentColor}
                           />
                         </div>
-                        <div className="space-y-1">
-                          <Label className="text-xs">特典ファイルURL</Label>
-                          <Input
-                            value={choice.rewardUrl}
-                            onChange={(e) => updateChoice(qIdx, cIdx, "rewardUrl", e.target.value)}
-                            placeholder="https://..."
-                            className="h-8"
-                          />
-                        </div>
+
+                        {/* 画像リンク（画像がアップ済みの場合のみ表示） */}
+                        {choice.file && choice.file.mimeType.startsWith("image/") && (
+                          <div className="space-y-1">
+                            <Label className="text-xs flex items-center gap-1">
+                              <LinkIcon className="h-3 w-3" />画像リンクURL
+                            </Label>
+                            <Input
+                              value={choice.fileLink || ""}
+                              onChange={(e) => updateChoice(qIdx, cIdx, "fileLink", e.target.value)}
+                              placeholder="画像タップ時のリンク先URL（任意）"
+                              className="h-8"
+                            />
+                          </div>
+                        )}
+
+                        {/* 特典（トグルONのときのみ表示） */}
+                        {question.hasReward && (
+                          <>
+                            <div className="space-y-1">
+                              <Label className="text-xs flex items-center gap-1">
+                                <Gift className="h-3 w-3" />特典メッセージ
+                              </Label>
+                              <Input
+                                value={choice.rewardMessage}
+                                onChange={(e) => updateChoice(qIdx, cIdx, "rewardMessage", e.target.value)}
+                                placeholder="選択後に送るメッセージ（任意）"
+                                className="h-8"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <Label className="text-xs">特典ファイルURL</Label>
+                              <Input
+                                value={choice.rewardUrl}
+                                onChange={(e) => updateChoice(qIdx, cIdx, "rewardUrl", e.target.value)}
+                                placeholder="https://..."
+                                className="h-8"
+                              />
+                            </div>
+                          </>
+                        )}
                       </div>
                     ))}
                   </div>
