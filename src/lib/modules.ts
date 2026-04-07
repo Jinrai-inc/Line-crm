@@ -51,6 +51,7 @@ export const modules: Record<string, BusinessModule> = {
 
 export const commonNavItems: NavItem[] = [
   { label: "タグ管理", href: "/tags", icon: "Tag" },
+  { label: "予定管理", href: "/calendar", icon: "CalendarDays" },
   { label: "予約管理", href: "/coaching", icon: "CalendarClock" },
   { label: "売上・決済", href: "/payments", icon: "CreditCard" },
   { label: "設定", href: "/settings", icon: "Settings" },

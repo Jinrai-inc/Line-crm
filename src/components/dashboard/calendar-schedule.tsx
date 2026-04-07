@@ -14,6 +14,7 @@ import {
   ExternalLink,
   CalendarOff,
   Settings,
+  Plus,
 } from "lucide-react"
 import Link from "next/link"
 
@@ -201,9 +202,17 @@ export function CalendarSchedule({ accentColor }: CalendarScheduleProps) {
       <div className="flex items-center justify-between mb-4">
         <h3 className="font-bold flex items-center gap-2">
           <CalendarDays size={18} style={{ color: accentColor }} />
-          Googleカレンダー
+          <Link href="/calendar" className="hover:opacity-80 transition-opacity">
+            Googleカレンダー
+          </Link>
         </h3>
         <div className="flex items-center gap-1">
+          <Button variant="ghost" size="sm" className="h-7 text-xs" asChild>
+            <Link href="/calendar">
+              <Plus size={14} className="mr-1" />
+              予定管理
+            </Link>
+          </Button>
           <Button
             variant="ghost"
             size="icon"
