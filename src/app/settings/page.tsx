@@ -11,6 +11,7 @@ import {
   Building2,
   Users,
   ChevronRight,
+  Timer,
 } from "lucide-react"
 
 interface SettingsMenuItem {
@@ -62,6 +63,14 @@ const settingsMenuItems: SettingsMenuItem[] = [
     icon: <Users className="h-6 w-6" />,
     iconBgColor: "bg-orange-100",
     iconColor: "text-orange-600",
+  },
+  {
+    title: "自動タグ付与",
+    description: "友だち追加から一定時間以内の登録者に自動でタグを付与します",
+    href: "/settings/auto-tag",
+    icon: <Timer className="h-6 w-6" />,
+    iconBgColor: "bg-teal-100",
+    iconColor: "text-teal-600",
   },
 ]
 

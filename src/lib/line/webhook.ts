@@ -99,6 +99,61 @@ async function handleFollow(
     }
   }
 
+  // 時間制限付き自動タグルールのチェック
+  const { data: autoTagRules } = await (supabase
+    .from("auto_tag_rules" as never)
+    .select("*")
+    .eq("organization_id" as never, context.organizationId)
+    .eq("enabled" as never, true) as unknown as Promise<{
+      data: Array<{ id: string; tag_id: string | null; tag_name: string; duration_minutes: number; created_at: string }> | null
+      error: unknown
+    }>)
+
+  if (autoTagRules && autoTagRules.length > 0) {
+    const now = new Date()
+    const { data: followFriend } = await supabase
+      .from("friends")
+      .select("id")
+      .eq("organization_id", context.organizationId)
+      .eq("line_user_id", userId)
+      .single()
+
+    if (followFriend) {
+      for (const rule of autoTagRules) {
+        const ruleCreated = new Date(rule.created_at)
+        const expiresAt = new Date(ruleCreated.getTime() + rule.duration_minutes * 60 * 1000)
+        if (now <= expiresAt) {
+          // ルール有効期間内 → タグ付与
+          let ruleTagId = rule.tag_id
+          if (!ruleTagId) {
+            const { data: existingTag } = await supabase
+              .from("tags")
+              .select("id")
+              .eq("organization_id", context.organizationId)
+              .eq("name", rule.tag_name)
+              .single()
+            if (existingTag) {
+              ruleTagId = existingTag.id
+            } else {
+              const { data: newTag } = await supabase
+                .from("tags")
+                .insert({ organization_id: context.organizationId, name: rule.tag_name })
+                .select("id")
+                .single()
+              ruleTagId = newTag?.id || null
+            }
+          }
+          if (ruleTagId) {
+            await supabase.from("friend_tags").upsert(
+              { friend_id: followFriend.id, tag_id: ruleTagId, auto_assigned: true },
+              { onConflict: "friend_id,tag_id" }
+            )
+          }
+        }
+      }
+    }
+  }
+
   // ウェルカムメッセージ送信
   if (event.replyToken) {
     await replyMessage(

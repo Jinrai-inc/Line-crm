@@ -59,6 +59,7 @@ import {
   Image as ImageIcon,
   FileText,
   Video,
+  ClipboardList,
 } from "lucide-react"
 
 interface TagData {
@@ -70,6 +71,13 @@ interface TagData {
 interface SeminarData {
   id: string
   title: string
+}
+
+interface SurveyData {
+  seminar_id: string
+  title: string
+  questions: string
+  enabled: boolean
 }
 
 interface BroadcastData {
@@ -125,7 +133,7 @@ export default function BroadcastsPage() {
 
   // Create form state
   const [title, setTitle] = useState("")
-  const [messageType, setMessageType] = useState<"text" | "image" | "video">("text")
+  const [messageType, setMessageType] = useState<"text" | "image" | "video" | "survey">("text")
   const [messageText, setMessageText] = useState("")
   const [imageUrl, setImageUrl] = useState("")
   const [previewImageUrl, setPreviewImageUrl] = useState("")
@@ -135,6 +143,8 @@ export default function BroadcastsPage() {
   const [selectedSeminarId, setSelectedSeminarId] = useState("")
   const [tags, setTags] = useState<TagData[]>([])
   const [seminars, setSeminars] = useState<SeminarData[]>([])
+  const [selectedSurveyId, setSelectedSurveyId] = useState("")
+  const [surveys, setSurveys] = useState<(SurveyData & { seminarTitle: string })[]>([])
   const [previewCount, setPreviewCount] = useState<number | null>(null)
   const [previewing, setPreviewing] = useState(false)
   const [sending, setSending] = useState(false)
@@ -177,10 +187,37 @@ export default function BroadcastsPage() {
     }
   }, [])
 
+  const fetchSurveys = useCallback(async () => {
+    try {
+      const semRes = await fetch("/api/seminars")
+      const semJson = await semRes.json()
+      const semList = semJson.data ?? []
+      const surveyList: (SurveyData & { seminarTitle: string })[] = []
+      for (const sem of semList) {
+        try {
+          const res = await fetch(`/api/seminars/${sem.id}/survey`)
+          const json = await res.json()
+          if (json.data && json.data.enabled) {
+            const q = typeof json.data.questions === "string"
+              ? JSON.parse(json.data.questions)
+              : json.data.questions || []
+            if (q.length > 0) {
+              surveyList.push({ ...json.data, seminar_id: sem.id, seminarTitle: sem.title })
+            }
+          }
+        } catch { /* skip */ }
+      }
+      setSurveys(surveyList)
+    } catch {
+      console.error("アンケート一覧の取得に失敗しました")
+    }
+  }, [])
+
   useEffect(() => {
     fetchTags()
     fetchSeminars()
-  }, [fetchTags, fetchSeminars])
+    fetchSurveys()
+  }, [fetchTags, fetchSeminars, fetchSurveys])
 
   useEffect(() => {
     if (activeTab === "history") {
@@ -218,32 +255,58 @@ export default function BroadcastsPage() {
   const handleSend = async () => {
     setSending(true)
     try {
-      const res = await fetch("/api/broadcasts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title,
-          messageType,
-          messageText: messageType === "text" ? messageText : undefined,
-          imageUrl: messageType !== "text" ? imageUrl : undefined,
-          previewImageUrl: messageType !== "text" ? previewImageUrl : undefined,
-          targetType,
-          targetFilter: buildTargetFilter(),
-        }),
-      })
-      if (res.ok) {
-        setConfirmOpen(false)
-        setTitle("")
-        setMessageType("text")
-        setMessageText("")
-        setImageUrl("")
-        setPreviewImageUrl("")
-        setUploadedFile(null)
-        setTargetType("all")
-        setSelectedTagIds([])
-        setSelectedSeminarId("")
-        setPreviewCount(null)
-        setActiveTab("history")
+      if (messageType === "survey") {
+        // アンケート配信はアンケート送信APIを使う
+        const survey = surveys.find((s) => s.seminar_id === selectedSurveyId)
+        if (!survey) return
+
+        const res = await fetch(`/api/seminars/${selectedSurveyId}/survey/send`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            targetType,
+            targetFilter: buildTargetFilter(),
+          }),
+        })
+        if (res.ok) {
+          setConfirmOpen(false)
+          setTitle("")
+          setMessageType("text")
+          setSelectedSurveyId("")
+          setTargetType("all")
+          setSelectedTagIds([])
+          setSelectedSeminarId("")
+          setPreviewCount(null)
+          setActiveTab("history")
+        }
+      } else {
+        const res = await fetch("/api/broadcasts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title,
+            messageType,
+            messageText: messageType === "text" ? messageText : undefined,
+            imageUrl: messageType !== "text" ? imageUrl : undefined,
+            previewImageUrl: messageType !== "text" ? previewImageUrl : undefined,
+            targetType,
+            targetFilter: buildTargetFilter(),
+          }),
+        })
+        if (res.ok) {
+          setConfirmOpen(false)
+          setTitle("")
+          setMessageType("text")
+          setMessageText("")
+          setImageUrl("")
+          setPreviewImageUrl("")
+          setUploadedFile(null)
+          setTargetType("all")
+          setSelectedTagIds([])
+          setSelectedSeminarId("")
+          setPreviewCount(null)
+          setActiveTab("history")
+        }
       }
     } catch {
       console.error("配信の送信に失敗しました")
@@ -260,10 +323,12 @@ export default function BroadcastsPage() {
 
   const hasContent = messageType === "text"
     ? messageText.trim() && messageText.length <= MAX_MESSAGE_LENGTH
+    : messageType === "survey"
+    ? !!selectedSurveyId
     : imageUrl.trim()
 
   const canSend =
-    title.trim() &&
+    (messageType === "survey" ? !!selectedSurveyId : title.trim()) &&
     hasContent &&
     (targetType === "all" ||
       (targetType === "tag" && selectedTagIds.length > 0) ||
@@ -320,11 +385,12 @@ export default function BroadcastsPage() {
               {/* メッセージ種別 */}
               <div className="space-y-2">
                 <Label>メッセージ種別</Label>
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap">
                   {[
                     { value: "text" as const, label: "テキスト", icon: FileText },
                     { value: "image" as const, label: "画像", icon: ImageIcon },
                     { value: "video" as const, label: "動画", icon: Video },
+                    { value: "survey" as const, label: "アンケート", icon: ClipboardList },
                   ].map(({ value, label, icon: Icon }) => (
                     <button
                       key={value}
@@ -450,6 +516,51 @@ export default function BroadcastsPage() {
                       入力するとメディアとテキストが一緒に配信されます
                     </p>
                   </div>
+                </div>
+              )}
+
+              {/* アンケート選択 */}
+              {messageType === "survey" && (
+                <div className="space-y-2">
+                  <Label>送信するアンケート</Label>
+                  {surveys.length === 0 ? (
+                    <div className="text-center py-6 border-2 border-dashed border-gray-200 rounded-lg">
+                      <ClipboardList className="h-8 w-8 mx-auto text-gray-300 mb-2" />
+                      <p className="text-sm text-gray-500">アンケートが作成されていません</p>
+                      <p className="text-xs text-gray-400 mt-1">セミナー詳細画面からアンケートを作成してください</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {surveys.map((survey) => {
+                        const questions = typeof survey.questions === "string"
+                          ? JSON.parse(survey.questions)
+                          : survey.questions || []
+                        const isSelected = selectedSurveyId === survey.seminar_id
+                        return (
+                          <button
+                            key={survey.seminar_id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedSurveyId(survey.seminar_id)
+                              if (!title) setTitle(`${survey.seminarTitle} - ${survey.title}`)
+                            }}
+                            className={`w-full text-left p-3 rounded-lg border-2 transition-all ${
+                              isSelected
+                                ? "border-current shadow-sm bg-green-50/50"
+                                : "border-gray-200 hover:border-gray-300"
+                            }`}
+                            style={isSelected ? { borderColor: accentColor } : undefined}
+                          >
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-sm font-medium">{survey.seminarTitle}</span>
+                              <Badge variant="secondary" className="text-xs">{questions.length}問</Badge>
+                            </div>
+                            <p className="text-xs text-gray-500">{survey.title}</p>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )}
                 </div>
               )}
 

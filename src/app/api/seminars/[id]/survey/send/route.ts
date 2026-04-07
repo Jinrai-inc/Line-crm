@@ -17,7 +17,11 @@ export async function POST(
     const admin = createAdminClient()
 
     const body = await request.json()
-    const { friendIds } = body as { friendIds?: string[] }
+    const { friendIds, targetType, targetFilter } = body as {
+      friendIds?: string[]
+      targetType?: string
+      targetFilter?: { tagIds?: string[]; seminarId?: string }
+    }
 
     // LINE設定取得
     const { data: lineAccount } = await admin
@@ -60,8 +64,34 @@ export async function POST(
         .eq("organization_id", orgId)
         .in("id", friendIds)
       targetFriends = data || []
+    } else if (targetType === "all") {
+      // 全友だち
+      const { data } = await admin
+        .from("friends")
+        .select("line_user_id")
+        .eq("organization_id", orgId)
+        .eq("status", "active")
+      targetFriends = data || []
+    } else if (targetType === "tag" && targetFilter?.tagIds?.length) {
+      // タグ指定
+      const { data: taggedFriends } = await admin
+        .from("friend_tags")
+        .select("friend_id")
+        .in("tag_id", targetFilter.tagIds)
+      const friendIdList = (taggedFriends || []).map((ft: { friend_id: string | null }) => ft.friend_id).filter((fid): fid is string => fid !== null)
+      if (friendIdList.length > 0) {
+        const { data } = await admin
+          .from("friends")
+          .select("line_user_id")
+          .eq("organization_id", orgId)
+          .eq("status", "active")
+          .in("id", friendIdList)
+        targetFriends = data || []
+      } else {
+        targetFriends = []
+      }
     } else {
-      // セミナー参加者全員
+      // デフォルト：セミナー参加者全員
       const { data: attendances } = await admin
         .from("attendances")
         .select("friends:friend_id(line_user_id)")

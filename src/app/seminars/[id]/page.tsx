@@ -136,6 +136,12 @@ export default function SeminarDetailPage() {
   const [selectedTagId, setSelectedTagId] = useState<string>("")
   const [loadingByTag, setLoadingByTag] = useState(false)
 
+  // アンケート関連
+  const [surveyData, setSurveyData] = useState<{ title: string; questions: Array<{ label: string; choices: Array<{ text: string }> }>; enabled: boolean } | null>(null)
+  const [surveyLoading, setSurveyLoading] = useState(false)
+  const [surveySending, setSurveySending] = useState(false)
+  const [surveySendResult, setSurveySendResult] = useState<{ sentCount: number; failedCount: number } | null>(null)
+
   // 編集フォーム
   const [editForm, setEditForm] = useState({
     title: "",
@@ -160,9 +166,50 @@ export default function SeminarDetailPage() {
     }
   }, [id])
 
+  const fetchSurvey = useCallback(async () => {
+    try {
+      setSurveyLoading(true)
+      const res = await fetch(`/api/seminars/${id}/survey`)
+      const json = await res.json()
+      if (json.data) {
+        const questions = typeof json.data.questions === "string"
+          ? JSON.parse(json.data.questions)
+          : json.data.questions || []
+        setSurveyData({ title: json.data.title, questions, enabled: json.data.enabled })
+      }
+    } catch {
+      // アンケート未設定の場合は無視
+    } finally {
+      setSurveyLoading(false)
+    }
+  }, [id])
+
+  async function handleSurveySend() {
+    setSurveySending(true)
+    setSurveySendResult(null)
+    try {
+      const res = await fetch(`/api/seminars/${id}/survey/send`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      })
+      if (res.ok) {
+        const json = await res.json()
+        setSurveySendResult(json)
+      }
+    } catch {
+      console.error("アンケート送信に失敗しました")
+    } finally {
+      setSurveySending(false)
+    }
+  }
+
   useEffect(() => {
-    if (id) fetchSeminar()
-  }, [id, fetchSeminar])
+    if (id) {
+      fetchSeminar()
+      fetchSurvey()
+    }
+  }, [id, fetchSeminar, fetchSurvey])
 
   function openEditDialog() {
     if (!seminar) return
@@ -621,6 +668,93 @@ export default function SeminarDetailPage() {
                   </span>
                 </div>
               </div>
+            </CardContent>
+          </Card>
+
+          {/* アンケート */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center gap-2">
+                  <ClipboardList className="h-4 w-4 text-green-600" />
+                  アンケート
+                </CardTitle>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={() => router.push(`/seminars/${id}/survey`)}
+                >
+                  設定
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {surveyLoading ? (
+                <div className="flex items-center justify-center py-4">
+                  <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
+                </div>
+              ) : surveyData && surveyData.questions.length > 0 ? (
+                <>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-medium">{surveyData.title}</p>
+                      <Badge variant={surveyData.enabled ? "default" : "secondary"}>
+                        {surveyData.enabled ? "有効" : "無効"}
+                      </Badge>
+                    </div>
+                    {surveyData.questions.map((q, i) => (
+                      <div key={i} className="text-xs text-gray-500 bg-gray-50 rounded-lg p-2.5">
+                        <p className="font-medium text-gray-700 mb-1">Q{i + 1}. {q.label}</p>
+                        <div className="flex flex-wrap gap-1">
+                          {q.choices.map((c, ci) => (
+                            <span key={ci} className="inline-block px-2 py-0.5 bg-white border rounded text-gray-600">
+                              {c.text}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {surveySendResult ? (
+                    <div className="text-center py-2">
+                      <p className="text-sm text-green-600 font-medium">
+                        {surveySendResult.sentCount}名に送信完了
+                      </p>
+                      {surveySendResult.failedCount > 0 && (
+                        <p className="text-xs text-red-500">{surveySendResult.failedCount}件失敗</p>
+                      )}
+                    </div>
+                  ) : (
+                    <Button
+                      size="sm"
+                      className="w-full"
+                      onClick={handleSurveySend}
+                      disabled={surveySending || seminar.attendees.length === 0}
+                    >
+                      {surveySending ? (
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      ) : (
+                        <Send className="h-4 w-4 mr-2" />
+                      )}
+                      参加者にアンケート送信
+                    </Button>
+                  )}
+                </>
+              ) : (
+                <div className="text-center py-4">
+                  <ClipboardList className="h-8 w-8 mx-auto text-gray-300 mb-2" />
+                  <p className="text-xs text-gray-500 mb-3">アンケートが未設定です</p>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => router.push(`/seminars/${id}/survey`)}
+                  >
+                    アンケートを作成
+                  </Button>
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>
