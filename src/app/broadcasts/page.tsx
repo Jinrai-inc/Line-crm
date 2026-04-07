@@ -55,6 +55,9 @@ import {
   Clock,
   Users,
   Megaphone,
+  Image as ImageIcon,
+  FileText,
+  Video,
 } from "lucide-react"
 
 interface TagData {
@@ -121,7 +124,10 @@ export default function BroadcastsPage() {
 
   // Create form state
   const [title, setTitle] = useState("")
+  const [messageType, setMessageType] = useState<"text" | "image" | "video">("text")
   const [messageText, setMessageText] = useState("")
+  const [imageUrl, setImageUrl] = useState("")
+  const [previewImageUrl, setPreviewImageUrl] = useState("")
   const [targetType, setTargetType] = useState("all")
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([])
   const [selectedSeminarId, setSelectedSeminarId] = useState("")
@@ -215,7 +221,10 @@ export default function BroadcastsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title,
-          messageText,
+          messageType,
+          messageText: messageType === "text" ? messageText : undefined,
+          imageUrl: messageType !== "text" ? imageUrl : undefined,
+          previewImageUrl: messageType !== "text" ? previewImageUrl : undefined,
           targetType,
           targetFilter: buildTargetFilter(),
         }),
@@ -223,7 +232,10 @@ export default function BroadcastsPage() {
       if (res.ok) {
         setConfirmOpen(false)
         setTitle("")
+        setMessageType("text")
         setMessageText("")
+        setImageUrl("")
+        setPreviewImageUrl("")
         setTargetType("all")
         setSelectedTagIds([])
         setSelectedSeminarId("")
@@ -243,10 +255,13 @@ export default function BroadcastsPage() {
     )
   }
 
+  const hasContent = messageType === "text"
+    ? messageText.trim() && messageText.length <= MAX_MESSAGE_LENGTH
+    : imageUrl.trim()
+
   const canSend =
     title.trim() &&
-    messageText.trim() &&
-    messageText.length <= MAX_MESSAGE_LENGTH &&
+    hasContent &&
     (targetType === "all" ||
       (targetType === "tag" && selectedTagIds.length > 0) ||
       (targetType === "seminar" && selectedSeminarId))
@@ -299,28 +314,128 @@ export default function BroadcastsPage() {
                 />
               </div>
 
-              {/* メッセージ */}
+              {/* メッセージ種別 */}
               <div className="space-y-2">
-                <Label htmlFor="broadcast-message">メッセージ本文</Label>
-                <Textarea
-                  id="broadcast-message"
-                  placeholder="配信するメッセージを入力してください..."
-                  rows={6}
-                  value={messageText}
-                  onChange={(e) => setMessageText(e.target.value)}
-                />
-                <div className="flex justify-end">
-                  <span
-                    className={`text-xs ${
-                      messageText.length > MAX_MESSAGE_LENGTH
-                        ? "text-red-500"
-                        : "text-gray-400"
-                    }`}
-                  >
-                    {messageText.length} / {MAX_MESSAGE_LENGTH}
-                  </span>
+                <Label>メッセージ種別</Label>
+                <div className="flex gap-2">
+                  {[
+                    { value: "text" as const, label: "テキスト", icon: FileText },
+                    { value: "image" as const, label: "画像", icon: ImageIcon },
+                    { value: "video" as const, label: "動画", icon: Video },
+                  ].map(({ value, label, icon: Icon }) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => setMessageType(value)}
+                      className={`flex items-center gap-2 px-4 py-2.5 rounded-lg border-2 text-sm font-medium transition-all ${
+                        messageType === value
+                          ? "border-current shadow-sm"
+                          : "border-gray-200 text-gray-500 hover:border-gray-300"
+                      }`}
+                      style={messageType === value ? { color: accentColor, borderColor: accentColor } : undefined}
+                    >
+                      <Icon className="h-4 w-4" />
+                      {label}
+                    </button>
+                  ))}
                 </div>
               </div>
+
+              {/* テキストメッセージ */}
+              {messageType === "text" && (
+                <div className="space-y-2">
+                  <Label htmlFor="broadcast-message">メッセージ本文</Label>
+                  <Textarea
+                    id="broadcast-message"
+                    placeholder="配信するメッセージを入力してください..."
+                    rows={6}
+                    value={messageText}
+                    onChange={(e) => setMessageText(e.target.value)}
+                  />
+                  <div className="flex justify-end">
+                    <span
+                      className={`text-xs ${
+                        messageText.length > MAX_MESSAGE_LENGTH
+                          ? "text-red-500"
+                          : "text-gray-400"
+                      }`}
+                    >
+                      {messageText.length} / {MAX_MESSAGE_LENGTH}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* 画像・動画メッセージ */}
+              {(messageType === "image" || messageType === "video") && (
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="media-url">
+                      {messageType === "image" ? "画像URL" : "動画URL"} *
+                    </Label>
+                    <Input
+                      id="media-url"
+                      placeholder={messageType === "image" ? "https://example.com/image.jpg" : "https://example.com/video.mp4"}
+                      value={imageUrl}
+                      onChange={(e) => setImageUrl(e.target.value)}
+                    />
+                    <p className="text-xs text-gray-500">
+                      {messageType === "image"
+                        ? "HTTPS公開URLを指定してください。JPEG/PNG形式、最大10MB"
+                        : "HTTPS公開URLを指定してください。MP4形式、最大200MB"}
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="preview-url">
+                      プレビュー画像URL（任意）
+                    </Label>
+                    <Input
+                      id="preview-url"
+                      placeholder="https://example.com/preview.jpg"
+                      value={previewImageUrl}
+                      onChange={(e) => setPreviewImageUrl(e.target.value)}
+                    />
+                    <p className="text-xs text-gray-500">
+                      未指定の場合、{messageType === "image" ? "元画像" : "動画URL"}がそのまま使用されます
+                    </p>
+                  </div>
+
+                  {/* 画像プレビュー */}
+                  {messageType === "image" && imageUrl && (
+                    <div className="space-y-2">
+                      <Label>プレビュー</Label>
+                      <div className="border rounded-lg p-3 bg-gray-50 max-w-xs">
+                        <img
+                          src={imageUrl}
+                          alt="プレビュー"
+                          className="rounded-lg max-h-48 object-contain w-full"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).style.display = "none"
+                          }}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* テキスト付与オプション */}
+                  <div className="space-y-2">
+                    <Label htmlFor="broadcast-message-with-media">
+                      添付テキスト（任意）
+                    </Label>
+                    <Textarea
+                      id="broadcast-message-with-media"
+                      placeholder="画像と一緒に送信するテキストメッセージ..."
+                      rows={3}
+                      value={messageText}
+                      onChange={(e) => setMessageText(e.target.value)}
+                    />
+                    <p className="text-xs text-gray-500">
+                      入力するとメディアとテキストが一緒に配信されます
+                    </p>
+                  </div>
+                </div>
+              )}
 
               {/* 配信対象 */}
               <div className="space-y-2">
@@ -531,12 +646,28 @@ export default function BroadcastsPage() {
                 <span>{previewCount}人</span>
               </div>
             )}
-            <div>
-              <span className="text-gray-500">メッセージ:</span>
-              <div className="mt-1 p-3 bg-gray-50 rounded-md whitespace-pre-wrap text-gray-700">
-                {messageText}
+            {(messageType === "image" || messageType === "video") && imageUrl && (
+              <div>
+                <span className="text-gray-500">{messageType === "image" ? "画像:" : "動画:"}</span>
+                {messageType === "image" ? (
+                  <div className="mt-1 max-w-[200px]">
+                    <img src={imageUrl} alt="配信画像" className="rounded-lg max-h-32 object-contain" />
+                  </div>
+                ) : (
+                  <div className="mt-1 p-2 bg-gray-50 rounded-md text-xs text-gray-600 truncate">
+                    {imageUrl}
+                  </div>
+                )}
               </div>
-            </div>
+            )}
+            {messageText && (
+              <div>
+                <span className="text-gray-500">メッセージ:</span>
+                <div className="mt-1 p-3 bg-gray-50 rounded-md whitespace-pre-wrap text-gray-700">
+                  {messageText}
+                </div>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button

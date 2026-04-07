@@ -3,6 +3,24 @@ export function textMessage(text: string) {
   return { type: "text", text }
 }
 
+// 画像メッセージ作成
+export function imageMessage(originalContentUrl: string, previewImageUrl?: string) {
+  return {
+    type: "image",
+    originalContentUrl,
+    previewImageUrl: previewImageUrl || originalContentUrl,
+  }
+}
+
+// 動画メッセージ作成
+export function videoMessage(originalContentUrl: string, previewImageUrl: string) {
+  return {
+    type: "video",
+    originalContentUrl,
+    previewImageUrl,
+  }
+}
+
 // Flex Messageラッパー
 export function flexMessage(altText: string, contents: unknown) {
   return {

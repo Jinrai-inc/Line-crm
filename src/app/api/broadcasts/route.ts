@@ -30,8 +30,12 @@ export async function POST(request: NextRequest) {
     if (!auth.ok) return auth.response
     const { supabase, orgId, userId } = auth
 
-    const { title, messageText, targetType, targetFilter, scheduledAt } = await request.json()
-    if (!messageText) return NextResponse.json({ error: "メッセージ本文は必須です" }, { status: 400 })
+    const { title, messageText, messageType, imageUrl, previewImageUrl, targetType, targetFilter, scheduledAt } = await request.json()
+    if (messageType === "image") {
+      if (!imageUrl) return NextResponse.json({ error: "画像URLは必須です" }, { status: 400 })
+    } else {
+      if (!messageText) return NextResponse.json({ error: "メッセージ本文は必須です" }, { status: 400 })
+    }
 
     // LINE設定取得
     const { data: lineAccount } = await supabase
@@ -72,7 +76,21 @@ export async function POST(request: NextRequest) {
     try {
       let sentCount = 0
       let failedCount = 0
-      const messages = [{ type: "text" as const, text: messageText }]
+      const messages: unknown[] = []
+
+      if (messageType === "image") {
+        messages.push({ type: "image", originalContentUrl: imageUrl, previewImageUrl: previewImageUrl || imageUrl })
+      } else if (messageType === "video") {
+        messages.push({ type: "video", originalContentUrl: imageUrl, previewImageUrl: previewImageUrl || imageUrl })
+      }
+
+      if (messageText) {
+        messages.push({ type: "text", text: messageText })
+      }
+
+      if (messages.length === 0) {
+        return NextResponse.json({ error: "送信するメッセージがありません" }, { status: 400 })
+      }
 
       if (targetType === "all") {
         // 全員配信
