@@ -29,6 +29,7 @@ export const modules: Record<string, BusinessModule> = {
       { label: "セミナー管理", href: "/seminars", icon: "Calendar" },
       { label: "参加履歴", href: "/attendances", icon: "CheckSquare" },
       { label: "配信", href: "/broadcasts", icon: "Send" },
+      { label: "アンケート", href: "/surveys", icon: "ClipboardList" },
     ],
   },
   marriage: {
@@ -45,6 +46,7 @@ export const modules: Record<string, BusinessModule> = {
       { label: "交際管理", href: "/dating", icon: "Users" },
       { label: "コーチング", href: "/coaching", icon: "ClipboardList" },
       { label: "配信", href: "/broadcasts", icon: "Send" },
+      { label: "アンケート", href: "/surveys", icon: "ClipboardList" },
     ],
   },
 }
