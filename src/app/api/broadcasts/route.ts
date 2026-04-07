@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getAuthenticatedOrgId } from "@/lib/api/auth"
 import { pushMessage, multicast, broadcast } from "@/lib/line/client"
+import { createFileDeliveryMessage } from "@/lib/line/flex-templates"
 
 // 配信履歴一覧
 export async function GET() {
@@ -30,11 +31,13 @@ export async function POST(request: NextRequest) {
     if (!auth.ok) return auth.response
     const { supabase, orgId, userId } = auth
 
-    const { title, messageText, messageType, imageUrl, previewImageUrl, targetType, targetFilter, scheduledAt } = await request.json()
-    if (messageType === "image") {
-      if (!imageUrl) return NextResponse.json({ error: "画像URLは必須です" }, { status: 400 })
+    const { title, messageText, messageType, imageUrl, previewImageUrl, fileName, targetType, targetFilter, scheduledAt } = await request.json()
+    if (messageType === "image" || messageType === "video") {
+      if (!imageUrl) return NextResponse.json({ error: "ファイルURLは必須です" }, { status: 400 })
+    } else if (messageType === "pdf") {
+      if (!imageUrl) return NextResponse.json({ error: "PDFファイルURLは必須です" }, { status: 400 })
     } else {
-      if (!messageText) return NextResponse.json({ error: "メッセージ本文は必須です" }, { status: 400 })
+      if (!messageText && !imageUrl) return NextResponse.json({ error: "メッセージ本文またはファイルが必須です" }, { status: 400 })
     }
 
     // LINE設定取得
@@ -78,14 +81,37 @@ export async function POST(request: NextRequest) {
       let failedCount = 0
       const messages: unknown[] = []
 
-      if (messageType === "image") {
-        messages.push({ type: "image", originalContentUrl: imageUrl, previewImageUrl: previewImageUrl || imageUrl })
-      } else if (messageType === "video") {
-        messages.push({ type: "video", originalContentUrl: imageUrl, previewImageUrl: previewImageUrl || imageUrl })
-      }
+      if (messageType === "pdf") {
+        // PDFはFlex Messageで配信（LINEはPDF直接送信非対応）
+        messages.push(createFileDeliveryMessage(
+          title || "ファイルのお届け",
+          messageText || "",
+          imageUrl,
+          fileName || imageUrl.split("/").pop() || "document.pdf"
+        ))
+      } else {
+        if (messageType === "image") {
+          messages.push({ type: "image", originalContentUrl: imageUrl, previewImageUrl: previewImageUrl || imageUrl })
+        } else if (messageType === "video") {
+          messages.push({ type: "video", originalContentUrl: imageUrl, previewImageUrl: previewImageUrl || imageUrl })
+        } else if (imageUrl) {
+          // テキスト配信にファイルが添付されている場合
+          const isPdf = imageUrl.toLowerCase().endsWith(".pdf") || fileName?.toLowerCase().endsWith(".pdf")
+          if (isPdf) {
+            messages.push(createFileDeliveryMessage(
+              title || "ファイルのお届け",
+              "",
+              imageUrl,
+              fileName || imageUrl.split("/").pop() || "document.pdf"
+            ))
+          } else {
+            messages.push({ type: "image", originalContentUrl: imageUrl, previewImageUrl: imageUrl })
+          }
+        }
 
-      if (messageText) {
-        messages.push({ type: "text", text: messageText })
+        if (messageText && messageType !== "pdf") {
+          messages.push({ type: "text", text: messageText })
+        }
       }
 
       if (messages.length === 0) {
@@ -119,6 +145,21 @@ export async function POST(request: NextRequest) {
           if (taggedFriends && taggedFriends.length > 0) {
             const friendIds = taggedFriends.map((ft: { friend_id: string | null }) => ft.friend_id).filter((id): id is string => id !== null)
             friendQuery = friendQuery.in("id", friendIds)
+          }
+        } else if (targetType === "seminar" && targetFilter?.seminarId) {
+          // セミナー参加者に絞り込み
+          const { data: attendances } = await supabase
+            .from("attendances")
+            .select("friend_id")
+            .eq("seminar_id", targetFilter.seminarId)
+            .neq("status", "cancelled")
+
+          if (attendances && attendances.length > 0) {
+            const friendIds = attendances.map((a: { friend_id: string | null }) => a.friend_id).filter((id): id is string => id !== null)
+            friendQuery = friendQuery.in("id", friendIds)
+          } else {
+            // 参加者なし
+            friendQuery = friendQuery.eq("id", "00000000-0000-0000-0000-000000000000")
           }
         }
 

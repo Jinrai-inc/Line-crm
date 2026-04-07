@@ -793,3 +793,44 @@ export function createSurveyRewardMessage(
       : {}),
   })
 }
+
+// PDF/ファイル配信メッセージ（Flex Message）
+export function createFileDeliveryMessage(
+  title: string,
+  description: string,
+  fileUrl: string,
+  fileName: string
+) {
+  const isPdf = fileName.toLowerCase().endsWith(".pdf")
+  return flexMessage(title || "ファイルのお届け", {
+    type: "bubble",
+    body: {
+      type: "box",
+      layout: "vertical",
+      contents: [
+        { type: "text", text: isPdf ? "📄 PDF" : "📎 ファイル", size: "xs", color: "#06C755", weight: "bold" },
+        { type: "text", text: title || fileName, weight: "bold", size: "lg", margin: "sm", wrap: true },
+        ...(description
+          ? [{ type: "separator", margin: "lg" }, { type: "text", text: description, wrap: true, size: "sm", color: "#666666", margin: "lg" }]
+          : []),
+        { type: "separator", margin: "lg" },
+        {
+          type: "box", layout: "horizontal", margin: "lg", contents: [
+            { type: "text", text: fileName, size: "xs", color: "#999999", flex: 1, wrap: true },
+          ],
+        },
+      ],
+    },
+    footer: {
+      type: "box",
+      layout: "vertical",
+      spacing: "sm",
+      contents: [
+        {
+          type: "button", style: "primary", color: "#06C755",
+          action: { type: "uri", label: isPdf ? "PDFを開く" : "ファイルを開く", uri: fileUrl },
+        },
+      ],
+    },
+  })
+}

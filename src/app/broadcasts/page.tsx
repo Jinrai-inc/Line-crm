@@ -60,6 +60,7 @@ import {
   FileText,
   Video,
   ClipboardList,
+  File,
 } from "lucide-react"
 
 interface TagData {
@@ -133,7 +134,7 @@ export default function BroadcastsPage() {
 
   // Create form state
   const [title, setTitle] = useState("")
-  const [messageType, setMessageType] = useState<"text" | "image" | "video" | "survey">("text")
+  const [messageType, setMessageType] = useState<"text" | "image" | "video" | "pdf">("text")
   const [messageText, setMessageText] = useState("")
   const [imageUrl, setImageUrl] = useState("")
   const [previewImageUrl, setPreviewImageUrl] = useState("")
@@ -143,6 +144,8 @@ export default function BroadcastsPage() {
   const [selectedSeminarId, setSelectedSeminarId] = useState("")
   const [tags, setTags] = useState<TagData[]>([])
   const [seminars, setSeminars] = useState<SeminarData[]>([])
+  // アンケート（メッセージと併送オプション）
+  const [attachSurvey, setAttachSurvey] = useState(false)
   const [selectedSurveyId, setSelectedSurveyId] = useState("")
   const [surveys, setSurveys] = useState<(SurveyData & { seminarTitle: string })[]>([])
   const [previewCount, setPreviewCount] = useState<number | null>(null)
@@ -235,6 +238,7 @@ export default function BroadcastsPage() {
     setTargetType("all")
     setSelectedTagIds([])
     setSelectedSeminarId("")
+    setAttachSurvey(false)
     setSelectedSurveyId("")
     setPreviewCount(null)
   }
@@ -269,12 +273,25 @@ export default function BroadcastsPage() {
   const handleSend = async () => {
     setSending(true)
     try {
-      if (messageType === "survey") {
-        // アンケート配信はアンケート送信APIを使う
-        const survey = surveys.find((s) => s.seminar_id === selectedSurveyId)
-        if (!survey) return
+      // メイン配信を送信
+      const res = await fetch("/api/broadcasts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title,
+          messageType,
+          messageText: messageText || undefined,
+          imageUrl: imageUrl || undefined,
+          previewImageUrl: previewImageUrl || undefined,
+          fileName: uploadedFile?.fileName || undefined,
+          targetType,
+          targetFilter: buildTargetFilter(),
+        }),
+      })
 
-        const res = await fetch(`/api/seminars/${selectedSurveyId}/survey/send`, {
+      // アンケートも併送する場合
+      if (attachSurvey && selectedSurveyId) {
+        await fetch(`/api/seminars/${selectedSurveyId}/survey/send`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -282,30 +299,12 @@ export default function BroadcastsPage() {
             targetFilter: buildTargetFilter(),
           }),
         })
-        if (res.ok) {
-          setConfirmOpen(false)
-          resetForm()
-          setActiveTab("history")
-        }
-      } else {
-        const res = await fetch("/api/broadcasts", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            title,
-            messageType: messageType === "text" && imageUrl ? "image" : messageType,
-            messageText,
-            imageUrl: imageUrl || undefined,
-            previewImageUrl: previewImageUrl || undefined,
-            targetType,
-            targetFilter: buildTargetFilter(),
-          }),
-        })
-        if (res.ok) {
-          setConfirmOpen(false)
-          resetForm()
-          setActiveTab("history")
-        }
+      }
+
+      if (res.ok) {
+        setConfirmOpen(false)
+        resetForm()
+        setActiveTab("history")
       }
     } catch {
       console.error("配信の送信に失敗しました")
@@ -321,17 +320,18 @@ export default function BroadcastsPage() {
   }
 
   const hasContent = messageType === "text"
-    ? messageText.trim() && messageText.length <= MAX_MESSAGE_LENGTH
-    : messageType === "survey"
-    ? !!selectedSurveyId
+    ? (messageText.trim() && messageText.length <= MAX_MESSAGE_LENGTH) || imageUrl.trim()
+    : messageType === "pdf"
+    ? imageUrl.trim()
     : imageUrl.trim()
 
   const canSend =
-    (messageType === "survey" ? !!selectedSurveyId : title.trim()) &&
+    title.trim() &&
     hasContent &&
     (targetType === "all" ||
       (targetType === "tag" && selectedTagIds.length > 0) ||
-      (targetType === "seminar" && selectedSeminarId))
+      (targetType === "seminar" && selectedSeminarId)) &&
+    (!attachSurvey || !!selectedSurveyId)
 
   const formatDateTime = (dateStr: string | null) => {
     if (!dateStr) return "-"
@@ -389,12 +389,17 @@ export default function BroadcastsPage() {
                     { value: "text" as const, label: "テキスト", icon: FileText },
                     { value: "image" as const, label: "画像", icon: ImageIcon },
                     { value: "video" as const, label: "動画", icon: Video },
-                    { value: "survey" as const, label: "アンケート", icon: ClipboardList },
+                    { value: "pdf" as const, label: "PDF", icon: File },
                   ].map(({ value, label, icon: Icon }) => (
                     <button
                       key={value}
                       type="button"
-                      onClick={() => setMessageType(value)}
+                      onClick={() => {
+                        setMessageType(value)
+                        setUploadedFile(null)
+                        setImageUrl("")
+                        setPreviewImageUrl("")
+                      }}
                       className={`flex items-center gap-2 px-4 py-2.5 rounded-lg border-2 text-sm font-medium transition-all ${
                         messageType === value
                           ? "border-current shadow-sm"
@@ -542,18 +547,85 @@ export default function BroadcastsPage() {
                 </div>
               )}
 
-              {/* アンケート選択 */}
-              {messageType === "survey" && (
-                <div className="space-y-2">
-                  <Label>送信するアンケート</Label>
-                  {surveys.length === 0 ? (
-                    <div className="text-center py-6 border-2 border-dashed border-gray-200 rounded-lg">
-                      <ClipboardList className="h-8 w-8 mx-auto text-gray-300 mb-2" />
-                      <p className="text-sm text-gray-500">アンケートが作成されていません</p>
-                      <p className="text-xs text-gray-400 mt-1">セミナー詳細画面からアンケートを作成してください</p>
+              {/* PDF配信 */}
+              {messageType === "pdf" && (
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label>PDFファイル</Label>
+                    <FileDropzone
+                      accept="application/pdf"
+                      maxSizeMB={10}
+                      accentColor={accentColor}
+                      uploadedFile={uploadedFile}
+                      onUpload={(file) => {
+                        setUploadedFile(file)
+                        setImageUrl(file.url)
+                      }}
+                      onRemove={() => {
+                        setUploadedFile(null)
+                        setImageUrl("")
+                      }}
+                    />
+                  </div>
+
+                  {!uploadedFile && (
+                    <details className="group">
+                      <summary className="text-xs text-gray-500 cursor-pointer hover:text-gray-700 transition-colors">
+                        URLを直接入力する場合はこちら
+                      </summary>
+                      <div className="mt-3 space-y-3 pl-3 border-l-2 border-gray-200">
+                        <div className="space-y-1.5">
+                          <Label htmlFor="pdf-url" className="text-xs">PDF URL</Label>
+                          <Input
+                            id="pdf-url"
+                            placeholder="https://example.com/document.pdf"
+                            value={imageUrl}
+                            onChange={(e) => setImageUrl(e.target.value)}
+                            className="h-9"
+                          />
+                        </div>
+                      </div>
+                    </details>
+                  )}
+
+                  <div className="space-y-2">
+                    <Label htmlFor="pdf-message">添付メッセージ（任意）</Label>
+                    <Textarea
+                      id="pdf-message"
+                      placeholder="PDFと一緒に送信するメッセージ..."
+                      rows={3}
+                      value={messageText}
+                      onChange={(e) => setMessageText(e.target.value)}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* アンケート併送オプション */}
+              {surveys.length > 0 && (
+                <div className="rounded-lg border border-gray-200 p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <ClipboardList className="h-4 w-4" style={{ color: accentColor }} />
+                      <span className="text-sm font-medium">アンケートも一緒に送信</span>
                     </div>
-                  ) : (
-                    <div className="space-y-2">
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={attachSurvey}
+                        onChange={(e) => {
+                          setAttachSurvey(e.target.checked)
+                          if (!e.target.checked) setSelectedSurveyId("")
+                        }}
+                        className="sr-only peer"
+                      />
+                      <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-green-500" />
+                    </label>
+                  </div>
+
+                  {attachSurvey && (
+                    <div className="space-y-2 pt-2 border-t border-gray-100">
+                      <Label className="text-xs text-gray-500">送信するアンケートを選択</Label>
                       {surveys.map((survey) => {
                         const questions = typeof survey.questions === "string"
                           ? JSON.parse(survey.questions)
@@ -563,10 +635,7 @@ export default function BroadcastsPage() {
                           <button
                             key={survey.seminar_id}
                             type="button"
-                            onClick={() => {
-                              setSelectedSurveyId(survey.seminar_id)
-                              if (!title) setTitle(`${survey.seminarTitle} - ${survey.title}`)
-                            }}
+                            onClick={() => setSelectedSurveyId(survey.seminar_id)}
                             className={`w-full text-left p-3 rounded-lg border-2 transition-all ${
                               isSelected
                                 ? "border-current shadow-sm bg-green-50/50"
@@ -796,21 +865,25 @@ export default function BroadcastsPage() {
                 <span>{previewCount}人</span>
               </div>
             )}
-            {messageType === "survey" && selectedSurveyId && (
-              <div className="flex gap-2">
-                <span className="text-gray-500 shrink-0 w-20">種別:</span>
-                <span>アンケート配信</span>
-              </div>
-            )}
+            <div className="flex gap-2">
+              <span className="text-gray-500 shrink-0 w-20">種別:</span>
+              <span>
+                {{ text: "テキスト", image: "画像", video: "動画", pdf: "PDF" }[messageType]}
+                {attachSurvey && " + アンケート"}
+              </span>
+            </div>
             {imageUrl && (
               <div>
-                <span className="text-gray-500">添付ファイル:</span>
+                <span className="text-gray-500">
+                  {messageType === "pdf" ? "PDFファイル:" : "添付ファイル:"}
+                </span>
                 {uploadedFile?.mimeType?.startsWith("image/") ? (
                   <div className="mt-1 max-w-[200px]">
                     <img src={imageUrl} alt="配信画像" className="rounded-lg max-h-32 object-contain" />
                   </div>
                 ) : uploadedFile ? (
-                  <div className="mt-1 p-2 bg-gray-50 rounded-md text-xs text-gray-600">
+                  <div className="mt-1 p-2 bg-gray-50 rounded-md text-xs text-gray-600 flex items-center gap-2">
+                    <File className="h-4 w-4 text-red-500" />
                     {uploadedFile.fileName}
                   </div>
                 ) : (
@@ -825,6 +898,15 @@ export default function BroadcastsPage() {
                 <span className="text-gray-500">メッセージ:</span>
                 <div className="mt-1 p-3 bg-gray-50 rounded-md whitespace-pre-wrap text-gray-700">
                   {messageText}
+                </div>
+              </div>
+            )}
+            {attachSurvey && selectedSurveyId && (
+              <div>
+                <span className="text-gray-500">アンケート:</span>
+                <div className="mt-1 p-2 bg-green-50 rounded-md text-xs text-green-700 flex items-center gap-2">
+                  <ClipboardList className="h-4 w-4" />
+                  {surveys.find((s) => s.seminar_id === selectedSurveyId)?.seminarTitle} - {surveys.find((s) => s.seminar_id === selectedSurveyId)?.title}
                 </div>
               </div>
             )}
