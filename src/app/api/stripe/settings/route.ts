@@ -1,18 +1,20 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getAuthenticatedOrgId } from "@/lib/api/auth"
+import { createAdminClient } from "@/lib/supabase/server"
 
 // Stripe設定の取得
 export async function GET() {
   try {
     const auth = await getAuthenticatedOrgId()
     if (!auth.ok) return auth.response
-    const { supabase, orgId } = auth
+    const { orgId } = auth
+    const admin = createAdminClient()
 
-    const { data: settings } = await supabase
-      .from("stripe_settings")
+    const { data: settings } = await (admin
+      .from("stripe_settings" as never)
       .select("*")
-      .eq("organization_id", orgId)
-      .single()
+      .eq("organization_id" as never, orgId)
+      .single() as unknown as Promise<{ data: Record<string, unknown> | null; error: unknown }>)
 
     return NextResponse.json({
       settings: settings || null,
@@ -37,6 +39,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "シークレットキーと公開キーは必須です" }, { status: 400 })
     }
 
+    const admin = createAdminClient()
+
     // 既存の設定があればUPDATE、なければINSERT
     const { data: existing } = await supabase
       .from("stripe_settings")
@@ -59,18 +63,18 @@ export async function POST(request: NextRequest) {
     }
 
     if (existing) {
-      const { error } = await supabase
-        .from("stripe_settings")
-        .update(settingsData)
-        .eq("id", existing.id)
+      const { error } = await (admin
+        .from("stripe_settings" as never)
+        .update(settingsData as never)
+        .eq("id" as never, existing.id) as unknown as Promise<{ error: unknown }>)
       if (error) throw error
     } else {
-      const { error } = await supabase
-        .from("stripe_settings")
+      const { error } = await (admin
+        .from("stripe_settings" as never)
         .insert({
           organization_id: orgId,
           ...settingsData,
-        })
+        } as never) as unknown as Promise<{ error: unknown }>)
       if (error) throw error
     }
 

@@ -22,6 +22,14 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { Switch } from "@/components/ui/switch"
+import {
   Plus,
   Search,
   Pencil,
@@ -29,6 +37,9 @@ import {
   Tag,
   Users,
   Loader2,
+  Timer,
+  CalendarClock,
+  Clock,
 } from "lucide-react"
 
 interface TagData {
@@ -64,6 +75,26 @@ export default function TagsPage() {
   const [formColor, setFormColor] = useState(PRESET_COLORS[0])
   const [saving, setSaving] = useState(false)
 
+  // 自動タグ時間設定
+  const [autoTagEnabled, setAutoTagEnabled] = useState(false)
+  const [autoTagType, setAutoTagType] = useState<"duration" | "scheduled">("duration")
+  const [autoTagDuration, setAutoTagDuration] = useState("30")
+  const [autoTagCustomDuration, setAutoTagCustomDuration] = useState("")
+  const [autoTagStartAt, setAutoTagStartAt] = useState("")
+  const [autoTagEndAt, setAutoTagEndAt] = useState("")
+
+  const DURATION_PRESETS = [
+    { label: "5分", value: "5" },
+    { label: "10分", value: "10" },
+    { label: "15分", value: "15" },
+    { label: "30分", value: "30" },
+    { label: "1時間", value: "60" },
+    { label: "2時間", value: "120" },
+    { label: "6時間", value: "360" },
+    { label: "12時間", value: "720" },
+    { label: "24時間", value: "1440" },
+  ]
+
   const fetchTags = useCallback(async () => {
     try {
       setLoading(true)
@@ -95,7 +126,12 @@ export default function TagsPage() {
         body: JSON.stringify({ name: formName.trim(), color: formColor }),
       })
       if (res.ok) {
+        // 自動タグルールを作成
+        if (autoTagEnabled) {
+          await createAutoTagRule(formName.trim())
+        }
         setCreateOpen(false)
+        resetAutoTagForm()
         setFormName("")
         setFormColor(PRESET_COLORS[0])
         await fetchTags()
@@ -117,8 +153,13 @@ export default function TagsPage() {
         body: JSON.stringify({ name: formName.trim(), color: formColor }),
       })
       if (res.ok) {
+        // 自動タグルールを作成
+        if (autoTagEnabled) {
+          await createAutoTagRule(formName.trim())
+        }
         setEditOpen(false)
         setSelectedTag(null)
+        resetAutoTagForm()
         await fetchTags()
       }
     } catch {
@@ -147,10 +188,46 @@ export default function TagsPage() {
     }
   }
 
+  const resetAutoTagForm = () => {
+    setAutoTagEnabled(false)
+    setAutoTagType("duration")
+    setAutoTagDuration("30")
+    setAutoTagCustomDuration("")
+    setAutoTagStartAt("")
+    setAutoTagEndAt("")
+  }
+
+  const createAutoTagRule = async (tagName: string) => {
+    const body: Record<string, unknown> = {
+      tagName,
+      scheduleType: autoTagType,
+      enabled: true,
+    }
+    if (autoTagType === "scheduled") {
+      if (!autoTagStartAt || !autoTagEndAt) return
+      body.startAt = new Date(autoTagStartAt).toISOString()
+      body.endAt = new Date(autoTagEndAt).toISOString()
+    } else {
+      body.durationMinutes = autoTagDuration === "custom"
+        ? parseInt(autoTagCustomDuration, 10)
+        : parseInt(autoTagDuration, 10)
+    }
+    try {
+      await fetch("/api/settings/auto-tag-rules", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      })
+    } catch {
+      console.error("自動タグルールの作成に失敗しました")
+    }
+  }
+
   const openEditDialog = (tag: TagData) => {
     setSelectedTag(tag)
     setFormName(tag.name)
     setFormColor(tag.color)
+    resetAutoTagForm()
     setEditOpen(true)
   }
 
@@ -162,7 +239,104 @@ export default function TagsPage() {
   const openCreateDialog = () => {
     setFormName("")
     setFormColor(PRESET_COLORS[0])
+    resetAutoTagForm()
     setCreateOpen(true)
+  }
+
+  function AutoTagSection() {
+    return (
+      <div className="space-y-3 border-t pt-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Timer className="h-4 w-4 text-teal-600" />
+            <Label className="text-sm font-medium">自動タグ付与</Label>
+          </div>
+          <Switch checked={autoTagEnabled} onCheckedChange={setAutoTagEnabled} />
+        </div>
+        {autoTagEnabled && (
+          <div className="space-y-3 bg-gray-50 rounded-lg p-3">
+            <p className="text-xs text-gray-500">
+              友だち追加時にこのタグを自動付与する時間を設定します
+            </p>
+
+            {/* タイプ選択 */}
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setAutoTagType("duration")}
+                className={`flex items-center gap-1.5 rounded-md border-2 p-2 text-left transition-colors ${
+                  autoTagType === "duration"
+                    ? "border-teal-500 bg-teal-50"
+                    : "border-gray-200 bg-white hover:border-gray-300"
+                }`}
+              >
+                <Clock className={`h-3.5 w-3.5 ${autoTagType === "duration" ? "text-teal-600" : "text-gray-400"}`} />
+                <span className="text-xs font-medium">今から○分間</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setAutoTagType("scheduled")}
+                className={`flex items-center gap-1.5 rounded-md border-2 p-2 text-left transition-colors ${
+                  autoTagType === "scheduled"
+                    ? "border-blue-500 bg-blue-50"
+                    : "border-gray-200 bg-white hover:border-gray-300"
+                }`}
+              >
+                <CalendarClock className={`h-3.5 w-3.5 ${autoTagType === "scheduled" ? "text-blue-600" : "text-gray-400"}`} />
+                <span className="text-xs font-medium">時刻を指定</span>
+              </button>
+            </div>
+
+            {autoTagType === "duration" ? (
+              <div className="space-y-2">
+                <Select value={autoTagDuration} onValueChange={setAutoTagDuration}>
+                  <SelectTrigger className="h-9">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {DURATION_PRESETS.map((p) => (
+                      <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
+                    ))}
+                    <SelectItem value="custom">カスタム</SelectItem>
+                  </SelectContent>
+                </Select>
+                {autoTagDuration === "custom" && (
+                  <Input
+                    type="number"
+                    min={1}
+                    value={autoTagCustomDuration}
+                    onChange={(e) => setAutoTagCustomDuration(e.target.value)}
+                    placeholder="分数を入力"
+                    className="h-9"
+                  />
+                )}
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <div>
+                  <Label className="text-xs">開始日時</Label>
+                  <Input
+                    type="datetime-local"
+                    value={autoTagStartAt}
+                    onChange={(e) => setAutoTagStartAt(e.target.value)}
+                    className="h-9"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs">終了日時</Label>
+                  <Input
+                    type="datetime-local"
+                    value={autoTagEndAt}
+                    onChange={(e) => setAutoTagEndAt(e.target.value)}
+                    className="h-9"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    )
   }
 
   function ColorPicker({
@@ -319,6 +493,7 @@ export default function TagsPage() {
                 </Badge>
               </div>
             </div>
+            <AutoTagSection />
           </div>
           <DialogFooter>
             <Button
@@ -370,6 +545,7 @@ export default function TagsPage() {
                 </Badge>
               </div>
             </div>
+            <AutoTagSection />
           </div>
           <DialogFooter>
             <Button
