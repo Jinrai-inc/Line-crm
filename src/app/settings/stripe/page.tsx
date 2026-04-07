@@ -77,38 +77,47 @@ export default function StripeSettingsPage() {
     }
   }
 
-  // 接続テスト
+  // 接続テスト（サーバーサイド経由）
   const handleTest = async () => {
-    setTestResult({ status: "testing" })
-    try {
-      // 一時的にStripeクライアントで顧客一覧を取得してテスト
-      const res = await fetch("/api/stripe/settings")
-      if (!res.ok) throw new Error("設定取得失敗")
-
-      // secretKeyを使って直接テストリクエスト
-      const testRes = await fetch("https://api.stripe.com/v1/customers?limit=1", {
-        headers: {
-          Authorization: `Bearer ${secretKey}`,
-        },
-      })
-
-      if (testRes.ok) {
-        setTestResult({
-          status: "success",
-          message: "Stripeとの接続に成功しました",
-        })
-      } else {
-        const errorData = await testRes.json()
-        setTestResult({
-          status: "error",
-          message: errorData.error?.message || "接続テストに失敗しました",
-        })
-      }
-    } catch {
+    // キーの形式チェック
+    if (secretKey && !secretKey.startsWith("sk_")) {
       setTestResult({
         status: "error",
-        message: "接続テストに失敗しました",
+        message: "シークレットキーは sk_live_ または sk_test_ で始まる必要があります。公開キーと逆に入力されていないか確認してください。",
       })
+      return
+    }
+    if (publishableKey && !publishableKey.startsWith("pk_")) {
+      setTestResult({
+        status: "error",
+        message: "公開キーは pk_live_ または pk_test_ で始まる必要があります。シークレットキーと逆に入力されていないか確認してください。",
+      })
+      return
+    }
+
+    setTestResult({ status: "testing" })
+    try {
+      // まず保存してからテスト
+      const saveRes = await fetch("/api/stripe/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ secretKey, publishableKey, webhookSecret }),
+      })
+      if (!saveRes.ok) {
+        setTestResult({ status: "error", message: "設定の保存に失敗しました。先に保存してください。" })
+        return
+      }
+
+      const testRes = await fetch("/api/stripe/settings/test", { method: "POST" })
+      const data = await testRes.json()
+
+      if (testRes.ok && data.success) {
+        setTestResult({ status: "success", message: data.message })
+      } else {
+        setTestResult({ status: "error", message: data.error || "接続テストに失敗しました" })
+      }
+    } catch {
+      setTestResult({ status: "error", message: "接続テストに失敗しました" })
     }
   }
 
