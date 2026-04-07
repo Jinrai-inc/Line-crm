@@ -1,12 +1,15 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getAuthenticatedOrgId } from "@/lib/api/auth"
+import { createAdminClient } from "@/lib/supabase/server"
 import { createCalendarEvent, listCalendarEvents } from "@/lib/google/calendar"
 
-async function getCalendarSettings(supabase: Parameters<never>[never] extends never ? Awaited<ReturnType<typeof import("@/lib/supabase/server").createServerSupabaseClient>> : never, orgId: string) {
-  const { data: settings } = await supabase
+async function getCalendarSettings(orgId: string, userId: string) {
+  const admin = createAdminClient()
+  const { data: settings } = await admin
     .from("google_calendar_settings")
     .select("*")
     .eq("organization_id", orgId)
+    .eq("user_id", userId)
     .eq("sync_enabled", true)
     .single()
 
@@ -27,9 +30,9 @@ export async function GET(request: NextRequest) {
   try {
     const auth = await getAuthenticatedOrgId()
     if (!auth.ok) return auth.response
-    const { supabase, orgId } = auth
+    const { orgId, userId } = auth
 
-    const result = await getCalendarSettings(supabase, orgId)
+    const result = await getCalendarSettings(orgId, userId)
     if (result.error) return result.error
 
     const { settings } = result
@@ -66,9 +69,9 @@ export async function POST(request: NextRequest) {
   try {
     const auth = await getAuthenticatedOrgId()
     if (!auth.ok) return auth.response
-    const { supabase, orgId } = auth
+    const { orgId, userId } = auth
 
-    const result = await getCalendarSettings(supabase, orgId)
+    const result = await getCalendarSettings(orgId, userId)
     if (result.error) return result.error
 
     const { settings } = result

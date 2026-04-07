@@ -48,8 +48,8 @@ import {
 
 interface Friend {
   id: string
-  line_display_name: string
   display_name: string | null
+  custom_name: string | null
 }
 
 interface Member {
@@ -99,7 +99,7 @@ export default function MembersPage() {
   const [addDialogOpen, setAddDialogOpen] = useState(false)
   const [addForm, setAddForm] = useState({
     friend_id: "",
-    membership_number: "",
+    name: "",
     status: "active" as Member["status"],
   })
   const [addLoading, setAddLoading] = useState(false)
@@ -112,7 +112,7 @@ export default function MembersPage() {
     try {
       const params = new URLSearchParams({
         page: String(page),
-        limit: String(LIMIT),
+        pageSize: String(LIMIT),
       })
       if (search) params.set("search", search)
       if (statusFilter !== "all") params.set("status", statusFilter)
@@ -136,7 +136,7 @@ export default function MembersPage() {
   // Fetch friends for add dialog
   useEffect(() => {
     if (addDialogOpen) {
-      fetch("/api/friends?limit=100")
+      fetch("/api/friends?pageSize=100")
         .then((r) => r.json())
         .then((json) => setFriends(json.data ?? []))
         .catch(() => {})
@@ -160,7 +160,7 @@ export default function MembersPage() {
   // ── Actions ────────────────────────────────────────────────────────
 
   const handleAddMember = async () => {
-    if (!addForm.friend_id || !addForm.membership_number.trim()) return
+    if (!addForm.friend_id || !addForm.name.trim()) return
     setAddLoading(true)
     try {
       const res = await fetch("/api/members", {
@@ -170,7 +170,7 @@ export default function MembersPage() {
       })
       if (res.ok) {
         setAddDialogOpen(false)
-        setAddForm({ friend_id: "", membership_number: "", status: "active" })
+        setAddForm({ friend_id: "", name: "", status: "active" })
         fetchMembers()
       }
     } finally {
@@ -219,24 +219,24 @@ export default function MembersPage() {
                     <SelectContent>
                       {friends.map((friend) => (
                         <SelectItem key={friend.id} value={friend.id}>
-                          {friend.display_name || friend.line_display_name}
+                          {friend.custom_name || friend.display_name || "名前なし"}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="grid gap-2">
-                  <Label htmlFor="add-number">会員番号 *</Label>
+                  <Label htmlFor="add-name">名前 *</Label>
                   <Input
-                    id="add-number"
-                    value={addForm.membership_number}
+                    id="add-name"
+                    value={addForm.name}
                     onChange={(e) =>
                       setAddForm((f) => ({
                         ...f,
-                        membership_number: e.target.value,
+                        name: e.target.value,
                       }))
                     }
-                    placeholder="例: M-0001"
+                    placeholder="会員名を入力"
                   />
                 </div>
                 <div className="grid gap-2">
@@ -354,9 +354,7 @@ export default function MembersPage() {
                               className="font-medium hover:underline"
                               style={{ color: "#EC4899" }}
                             >
-                              {member.friend?.display_name ||
-                                member.friend?.line_display_name ||
-                                "-"}
+                              {member.friend?.custom_name || member.friend?.display_name || "名前なし"}
                             </Link>
                           </TableCell>
                           <TableCell>
@@ -420,7 +418,7 @@ export default function MembersPage() {
                           </p>
                           <p className="font-medium mt-0.5">
                             {member.friend?.display_name ||
-                              member.friend?.line_display_name ||
+                              member.friend?.display_name || "名前なし" ||
                               "-"}
                           </p>
                           <p className="text-xs text-gray-400 mt-1">

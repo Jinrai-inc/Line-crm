@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
 
     let query = supabase
       .from("dating")
-      .select("*", { count: "exact" })
+      .select("*, male_member:male_member_id(id, name, membership_number, friend:friend_id(display_name, custom_name)), female_member:female_member_id(id, name, membership_number, friend:friend_id(display_name, custom_name))", { count: "exact" })
       .eq("organization_id", orgId)
 
     // ステータスフィルタ

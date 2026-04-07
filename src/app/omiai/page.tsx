@@ -46,23 +46,24 @@ import {
 
 interface Member {
   id: string
+  name: string | null
   membership_number: string
   friend: {
     display_name: string | null
-    line_display_name: string
-  }
+    custom_name: string | null
+  } | null
 }
 
 interface Omiai {
   id: string
-  member1_id: string
-  member2_id: string
-  member1: Member
-  member2: Member
-  date: string
-  venue: string
+  male_member_id: string
+  female_member_id: string
+  male_member: Member | null
+  female_member: Member | null
+  scheduled_date: string
+  location: string | null
   status: "scheduled" | "completed" | "cancelled" | "matched"
-  notes: string | null
+  counselor_note: string | null
 }
 
 type OmiaiStatus = "all" | "scheduled" | "completed" | "cancelled" | "matched"
@@ -79,8 +80,9 @@ const STATUS_CONFIG: Record<
 
 // ── Helper ─────────────────────────────────────────────────────────────
 
-function getMemberName(member: Member): string {
-  return member.friend?.display_name || member.friend?.line_display_name || "-"
+function getMemberName(member: Member | null): string {
+  if (!member) return "-"
+  return member.friend?.display_name || member.name || "-"
 }
 
 // ── Main Page Component ────────────────────────────────────────────────
@@ -95,10 +97,10 @@ export default function OmiaiPage() {
   const [addDialogOpen, setAddDialogOpen] = useState(false)
   const [members, setMembers] = useState<Member[]>([])
   const [addForm, setAddForm] = useState({
-    member1_id: "",
-    member2_id: "",
-    date: "",
-    venue: "",
+    male_member_id: "",
+    female_member_id: "",
+    scheduled_date: "",
+    location: "",
   })
   const [addLoading, setAddLoading] = useState(false)
 
@@ -128,7 +130,7 @@ export default function OmiaiPage() {
   // Fetch members for add dialog
   useEffect(() => {
     if (addDialogOpen) {
-      fetch("/api/members?limit=100")
+      fetch("/api/members?pageSize=100")
         .then((r) => r.json())
         .then((json) => setMembers(json.data ?? []))
         .catch(() => {})
@@ -138,7 +140,7 @@ export default function OmiaiPage() {
   // ── Actions ────────────────────────────────────────────────────────
 
   const handleAdd = async () => {
-    if (!addForm.member1_id || !addForm.member2_id || !addForm.date) return
+    if (!addForm.male_member_id || !addForm.female_member_id || !addForm.scheduled_date) return
     setAddLoading(true)
     try {
       const res = await fetch("/api/omiai", {
@@ -148,7 +150,7 @@ export default function OmiaiPage() {
       })
       if (res.ok) {
         setAddDialogOpen(false)
-        setAddForm({ member1_id: "", member2_id: "", date: "", venue: "" })
+        setAddForm({ male_member_id: "", female_member_id: "", scheduled_date: "", location: "" })
         fetchRecords()
       }
     } finally {
@@ -200,11 +202,11 @@ export default function OmiaiPage() {
               </DialogHeader>
               <div className="grid gap-4 py-4">
                 <div className="grid gap-2">
-                  <Label>会員1 *</Label>
+                  <Label>男性会員 *</Label>
                   <Select
-                    value={addForm.member1_id}
+                    value={addForm.male_member_id}
                     onValueChange={(v) =>
-                      setAddForm((f) => ({ ...f, member1_id: v }))
+                      setAddForm((f) => ({ ...f, male_member_id: v }))
                     }
                   >
                     <SelectTrigger>
@@ -212,7 +214,7 @@ export default function OmiaiPage() {
                     </SelectTrigger>
                     <SelectContent>
                       {members
-                        .filter((m) => m.id !== addForm.member2_id)
+                        .filter((m) => m.id !== addForm.female_member_id)
                         .map((m) => (
                           <SelectItem key={m.id} value={m.id}>
                             {getMemberName(m)} ({m.membership_number})
@@ -222,11 +224,11 @@ export default function OmiaiPage() {
                   </Select>
                 </div>
                 <div className="grid gap-2">
-                  <Label>会員2 *</Label>
+                  <Label>女性会員 *</Label>
                   <Select
-                    value={addForm.member2_id}
+                    value={addForm.female_member_id}
                     onValueChange={(v) =>
-                      setAddForm((f) => ({ ...f, member2_id: v }))
+                      setAddForm((f) => ({ ...f, female_member_id: v }))
                     }
                   >
                     <SelectTrigger>
@@ -234,7 +236,7 @@ export default function OmiaiPage() {
                     </SelectTrigger>
                     <SelectContent>
                       {members
-                        .filter((m) => m.id !== addForm.member1_id)
+                        .filter((m) => m.id !== addForm.male_member_id)
                         .map((m) => (
                           <SelectItem key={m.id} value={m.id}>
                             {getMemberName(m)} ({m.membership_number})
@@ -247,18 +249,18 @@ export default function OmiaiPage() {
                   <Label>日付 *</Label>
                   <Input
                     type="date"
-                    value={addForm.date}
+                    value={addForm.scheduled_date}
                     onChange={(e) =>
-                      setAddForm((f) => ({ ...f, date: e.target.value }))
+                      setAddForm((f) => ({ ...f, scheduled_date: e.target.value }))
                     }
                   />
                 </div>
                 <div className="grid gap-2">
                   <Label>場所</Label>
                   <Input
-                    value={addForm.venue}
+                    value={addForm.location}
                     onChange={(e) =>
-                      setAddForm((f) => ({ ...f, venue: e.target.value }))
+                      setAddForm((f) => ({ ...f, location: e.target.value }))
                     }
                     placeholder="例: 東京ホテルラウンジ"
                   />
@@ -340,22 +342,22 @@ export default function OmiaiPage() {
                       return (
                         <TableRow key={record.id}>
                           <TableCell className="font-medium">
-                            {getMemberName(record.member1)}
+                            {getMemberName(record.male_member)}
                           </TableCell>
                           <TableCell className="font-medium">
-                            {getMemberName(record.member2)}
+                            {getMemberName(record.female_member)}
                           </TableCell>
                           <TableCell className="text-sm">
                             <span className="inline-flex items-center gap-1">
                               <CalendarDays className="size-3.5 text-gray-400" />
-                              {formatDateShort(record.date)}
+                              {formatDateShort(record.scheduled_date)}
                             </span>
                           </TableCell>
                           <TableCell className="text-sm">
-                            {record.venue ? (
+                            {record.location ? (
                               <span className="inline-flex items-center gap-1">
                                 <MapPinIcon className="size-3.5 text-gray-400" />
-                                {record.venue}
+                                {record.location}
                               </span>
                             ) : (
                               "-"
@@ -433,8 +435,8 @@ export default function OmiaiPage() {
                     <div className="flex items-start justify-between mb-2">
                       <div>
                         <p className="font-medium" style={{ color: "#EC4899" }}>
-                          {getMemberName(record.member1)} &times;{" "}
-                          {getMemberName(record.member2)}
+                          {getMemberName(record.male_member)} &times;{" "}
+                          {getMemberName(record.female_member)}
                         </p>
                       </div>
                       <Badge
@@ -450,12 +452,12 @@ export default function OmiaiPage() {
                     <div className="flex items-center gap-4 text-xs text-gray-500 mb-3">
                       <span className="inline-flex items-center gap-1">
                         <CalendarDays className="size-3.5" />
-                        {formatDateShort(record.date)}
+                        {formatDateShort(record.scheduled_date)}
                       </span>
-                      {record.venue && (
+                      {record.location && (
                         <span className="inline-flex items-center gap-1">
                           <MapPinIcon className="size-3.5" />
-                          {record.venue}
+                          {record.location}
                         </span>
                       )}
                     </div>

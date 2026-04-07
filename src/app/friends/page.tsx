@@ -134,13 +134,13 @@ export default function FriendsPage() {
     try {
       const params = new URLSearchParams({
         page: String(page),
-        limit: String(LIMIT),
-        sort: sortField,
-        order: sortDir,
+        pageSize: String(LIMIT),
+        sortBy: sortField,
+        sortOrder: sortDir,
       })
       if (search) params.set("search", search)
       if (statusFilter !== "all") params.set("status", statusFilter)
-      if (selectedTagIds.length > 0) params.set("tags", selectedTagIds.join(","))
+      if (selectedTagIds.length > 0) params.set("tagIds", selectedTagIds.join(","))
 
       const res = await fetch(`/api/friends?${params}`)
       if (!res.ok) throw new Error("Fetch failed")

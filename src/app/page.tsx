@@ -19,6 +19,7 @@ import {
   Loader2,
   type LucideIcon,
 } from "lucide-react"
+import { CalendarSchedule } from "@/components/dashboard/calendar-schedule"
 
 const moduleIconMap: Record<string, LucideIcon> = {
   CalendarDays,
@@ -232,12 +233,7 @@ export default function DashboardPage() {
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
-              <h3 className="font-bold mb-4">友だち推移</h3>
-              <div className="h-64 flex items-center justify-center text-muted-foreground">
-                チャート機能は後日実装予定
-              </div>
-            </div>
+            <CalendarSchedule accentColor="#06C755" />
             <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
               <h3 className="font-bold mb-4">最近のアクティビティ</h3>
               <div className="h-64 flex items-center justify-center text-muted-foreground">
@@ -283,12 +279,7 @@ export default function DashboardPage() {
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
-              <h3 className="font-bold mb-4">会員パイプライン</h3>
-              <div className="h-64 flex items-center justify-center text-muted-foreground">
-                チャート機能は後日実装予定
-              </div>
-            </div>
+            <CalendarSchedule accentColor="#EC4899" />
             <div className="bg-card rounded-2xl border border-border p-6 shadow-sm">
               <h3 className="font-bold mb-4">今後のお見合い予定</h3>
               <div className="h-64 flex items-center justify-center text-muted-foreground">

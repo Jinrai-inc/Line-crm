@@ -38,22 +38,23 @@ import {
 
 interface Member {
   id: string
+  name: string | null
   membership_number: string
   friend: {
     display_name: string | null
-    line_display_name: string
-  }
+    custom_name: string | null
+  } | null
 }
 
 interface Dating {
   id: string
-  member1_id: string
-  member2_id: string
-  member1: Member
-  member2: Member
-  start_date: string
+  male_member_id: string
+  female_member_id: string
+  male_member: Member | null
+  female_member: Member | null
+  started_at: string
   status: "active" | "ended" | "engagement"
-  notes: string | null
+  counselor_note: string | null
 }
 
 type DatingStatus = "all" | "active" | "ended" | "engagement"
@@ -69,8 +70,9 @@ const STATUS_CONFIG: Record<
 
 // ── Helper ─────────────────────────────────────────────────────────────
 
-function getMemberName(member: Member): string {
-  return member.friend?.display_name || member.friend?.line_display_name || "-"
+function getMemberName(member: Member | null): string {
+  if (!member) return "-"
+  return member.friend?.display_name || member.name || "-"
 }
 
 function calcDaysElapsed(startDate: string): number {
@@ -92,9 +94,9 @@ export default function DatingPage() {
   const [addDialogOpen, setAddDialogOpen] = useState(false)
   const [members, setMembers] = useState<Member[]>([])
   const [addForm, setAddForm] = useState({
-    member1_id: "",
-    member2_id: "",
-    start_date: "",
+    male_member_id: "",
+    female_member_id: "",
+    started_at: "",
   })
   const [addLoading, setAddLoading] = useState(false)
 
@@ -124,7 +126,7 @@ export default function DatingPage() {
   // Fetch members for add dialog
   useEffect(() => {
     if (addDialogOpen) {
-      fetch("/api/members?limit=100")
+      fetch("/api/members?pageSize=100")
         .then((r) => r.json())
         .then((json) => setMembers(json.data ?? []))
         .catch(() => {})
@@ -134,7 +136,7 @@ export default function DatingPage() {
   // ── Actions ────────────────────────────────────────────────────────
 
   const handleAdd = async () => {
-    if (!addForm.member1_id || !addForm.member2_id || !addForm.start_date)
+    if (!addForm.male_member_id || !addForm.female_member_id || !addForm.started_at)
       return
     setAddLoading(true)
     try {
@@ -145,7 +147,7 @@ export default function DatingPage() {
       })
       if (res.ok) {
         setAddDialogOpen(false)
-        setAddForm({ member1_id: "", member2_id: "", start_date: "" })
+        setAddForm({ male_member_id: "", female_member_id: "", started_at: "" })
         fetchRecords()
       }
     } finally {
@@ -197,11 +199,11 @@ export default function DatingPage() {
               </DialogHeader>
               <div className="grid gap-4 py-4">
                 <div className="grid gap-2">
-                  <Label>会員1 *</Label>
+                  <Label>男性会員 *</Label>
                   <Select
-                    value={addForm.member1_id}
+                    value={addForm.male_member_id}
                     onValueChange={(v) =>
-                      setAddForm((f) => ({ ...f, member1_id: v }))
+                      setAddForm((f) => ({ ...f, male_member_id: v }))
                     }
                   >
                     <SelectTrigger>
@@ -209,7 +211,7 @@ export default function DatingPage() {
                     </SelectTrigger>
                     <SelectContent>
                       {members
-                        .filter((m) => m.id !== addForm.member2_id)
+                        .filter((m) => m.id !== addForm.female_member_id)
                         .map((m) => (
                           <SelectItem key={m.id} value={m.id}>
                             {getMemberName(m)} ({m.membership_number})
@@ -219,11 +221,11 @@ export default function DatingPage() {
                   </Select>
                 </div>
                 <div className="grid gap-2">
-                  <Label>会員2 *</Label>
+                  <Label>女性会員 *</Label>
                   <Select
-                    value={addForm.member2_id}
+                    value={addForm.female_member_id}
                     onValueChange={(v) =>
-                      setAddForm((f) => ({ ...f, member2_id: v }))
+                      setAddForm((f) => ({ ...f, female_member_id: v }))
                     }
                   >
                     <SelectTrigger>
@@ -231,7 +233,7 @@ export default function DatingPage() {
                     </SelectTrigger>
                     <SelectContent>
                       {members
-                        .filter((m) => m.id !== addForm.member1_id)
+                        .filter((m) => m.id !== addForm.male_member_id)
                         .map((m) => (
                           <SelectItem key={m.id} value={m.id}>
                             {getMemberName(m)} ({m.membership_number})
@@ -244,9 +246,9 @@ export default function DatingPage() {
                   <Label>交際開始日 *</Label>
                   <Input
                     type="date"
-                    value={addForm.start_date}
+                    value={addForm.started_at}
                     onChange={(e) =>
-                      setAddForm((f) => ({ ...f, start_date: e.target.value }))
+                      setAddForm((f) => ({ ...f, started_at: e.target.value }))
                     }
                   />
                 </div>
@@ -315,7 +317,7 @@ export default function DatingPage() {
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {records.map((record) => {
             const statusCfg = STATUS_CONFIG[record.status]
-            const days = calcDaysElapsed(record.start_date)
+            const days = calcDaysElapsed(record.started_at)
 
             return (
               <Card
@@ -331,14 +333,14 @@ export default function DatingPage() {
                         className="font-semibold"
                         style={{ color: "#EC4899" }}
                       >
-                        {getMemberName(record.member1)}
+                        {getMemberName(record.male_member)}
                       </p>
                       <p className="text-xs text-gray-400 my-0.5">&amp;</p>
                       <p
                         className="font-semibold"
                         style={{ color: "#EC4899" }}
                       >
-                        {getMemberName(record.member2)}
+                        {getMemberName(record.female_member)}
                       </p>
                     </div>
                     <Badge
@@ -356,7 +358,7 @@ export default function DatingPage() {
                   <div className="flex items-center gap-4 text-xs text-gray-500 mb-4">
                     <span className="inline-flex items-center gap-1">
                       <CalendarDays className="size-3.5" />
-                      {formatDateShort(record.start_date)}
+                      {formatDateShort(record.started_at)}
                     </span>
                     <span className="inline-flex items-center gap-1">
                       <ClockIcon className="size-3.5" />
