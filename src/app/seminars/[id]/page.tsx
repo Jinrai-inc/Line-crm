@@ -47,6 +47,7 @@ import {
   Send,
   Trash2,
   Tag,
+  ClipboardList,
 } from "lucide-react"
 
 interface Tag {
@@ -421,6 +422,10 @@ export default function SeminarDetailPage() {
             <Button variant="outline" onClick={() => router.push(`/seminars/${id}/followup`)}>
               <MessageSquare className="h-4 w-4 mr-2" />
               フォローアップ
+            </Button>
+            <Button variant="outline" onClick={() => router.push(`/seminars/${id}/survey`)}>
+              <ClipboardList className="h-4 w-4 mr-2" />
+              アンケート
             </Button>
             <Button variant="outline" onClick={openEditDialog}>
               <Pencil className="h-4 w-4 mr-2" />

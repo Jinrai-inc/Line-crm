@@ -707,3 +707,89 @@ export function createPaymentReceiptMessage(payment: PaymentInfo) {
     },
   })
 }
+
+// アンケート Flex Message
+interface SurveyQuestion {
+  label: string
+  choices: {
+    text: string
+    tagName: string
+    rewardMessage?: string
+    rewardUrl?: string
+  }[]
+}
+
+interface SurveyMessageParams {
+  seminarId: string
+  seminarTitle: string
+  surveyTitle: string
+  questions: SurveyQuestion[]
+}
+
+export function createSurveyMessage(params: SurveyMessageParams) {
+  const { seminarId, seminarTitle, surveyTitle, questions } = params
+
+  const bubbles = questions.map((question, qIndex) => {
+    const choiceButtons = question.choices.map((choice, cIndex) => ({
+      type: "button" as const,
+      style: "primary" as const,
+      color: "#06C755",
+      height: "sm" as const,
+      action: {
+        type: "postback" as const,
+        label: choice.text,
+        data: `action=survey_answer&seminar_id=${seminarId}&q=${qIndex}&c=${cIndex}`,
+        displayText: choice.text,
+      },
+    }))
+
+    return {
+      type: "bubble" as const,
+      body: {
+        type: "box" as const,
+        layout: "vertical" as const,
+        contents: [
+          { type: "text" as const, text: "📋 " + surveyTitle, weight: "bold" as const, size: "md" as const, color: "#06C755" },
+          { type: "text" as const, text: seminarTitle, size: "xs" as const, color: "#999999", margin: "sm" as const },
+          { type: "separator" as const, margin: "lg" as const },
+          { type: "text" as const, text: question.label, weight: "bold" as const, size: "md" as const, margin: "lg" as const, wrap: true as const },
+          { type: "text" as const, text: "以下からお選びください", size: "xs" as const, color: "#999999", margin: "sm" as const },
+        ],
+      },
+      footer: { type: "box" as const, layout: "vertical" as const, spacing: "sm" as const, contents: choiceButtons },
+    }
+  })
+
+  if (bubbles.length === 1) return flexMessage(surveyTitle, bubbles[0])
+  return flexMessage(surveyTitle, { type: "carousel", contents: bubbles })
+}
+
+// アンケート回答後の特典送信 Flex Message
+export function createSurveyRewardMessage(
+  thankMessage: string,
+  rewardUrl?: string,
+  fileName?: string
+) {
+  const bodyContents: unknown[] = [
+    { type: "text", text: "🎁 特典のお届け", weight: "bold", size: "lg", color: "#06C755" },
+    { type: "separator", margin: "lg" },
+    { type: "text", text: thankMessage, wrap: true, size: "sm", margin: "lg" },
+  ]
+
+  const footerContents: unknown[] = []
+  if (rewardUrl) {
+    const isPdf = rewardUrl.toLowerCase().endsWith(".pdf") || (fileName?.toLowerCase().endsWith(".pdf"))
+    footerContents.push({
+      type: "button", style: "primary", color: "#06C755",
+      action: { type: "uri", label: isPdf ? "📄 PDFを開く" : "🎁 特典を受け取る", uri: rewardUrl },
+    })
+  }
+
+  return flexMessage("特典のお届け", {
+    type: "bubble",
+    body: { type: "box", layout: "vertical", contents: bodyContents },
+    ...(footerContents.length > 0
+      ? { footer: { type: "box", layout: "vertical", spacing: "sm", contents: footerContents } }
+      : {}),
+  })
+}

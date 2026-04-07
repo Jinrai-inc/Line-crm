@@ -1,7 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/server"
 import { getProfile, replyMessage } from "./client"
 import { createWelcomeMessage, createDefaultReply } from "./messages"
-import { createSeminarListMessage, createApplyConfirmMessage, createFollowupResponseMessage } from "./flex-templates"
+import { createSeminarListMessage, createApplyConfirmMessage, createFollowupResponseMessage, createSurveyRewardMessage } from "./flex-templates"
 
 // Webhookイベントの簡易型（LINEから受信するrawデータ）
 interface WebhookEvent {
@@ -611,6 +611,92 @@ async function handlePostback(
         content: `seminar_id=${seminarId}&button_index=${buttonIndex}&tag=${button.tagName}`,
         raw_event: JSON.parse(JSON.stringify(event)),
       })
+      break
+    }
+    case "survey_answer": {
+      const seminarId = params.get("seminar_id")
+      const qIndex = parseInt(params.get("q") || "0", 10)
+      const cIndex = parseInt(params.get("c") || "0", 10)
+      const userId = event.source.userId
+      if (!seminarId || !userId) break
+
+      // アンケート設定を取得
+      const { data: survey } = await (supabase
+        .from("seminar_surveys" as never)
+        .select("*")
+        .eq("seminar_id" as never, seminarId)
+        .eq("organization_id" as never, context.organizationId)
+        .single() as unknown as Promise<{ data: { questions: string } | null; error: unknown }>)
+
+      if (!survey) break
+
+      const questions = JSON.parse(survey.questions || "[]") as Array<{
+        label: string
+        choices: Array<{ text: string; tagName: string; rewardMessage?: string; rewardUrl?: string }>
+      }>
+      const question = questions[qIndex]
+      const choice = question?.choices?.[cIndex]
+      if (!choice) break
+
+      // 友だちを取得
+      const { data: surveyFriend } = await supabase
+        .from("friends")
+        .select("id")
+        .eq("organization_id", context.organizationId)
+        .eq("line_user_id", userId)
+        .single()
+
+      // タグの自動作成・付与
+      if (choice.tagName && surveyFriend) {
+        let { data: surveyTag } = await supabase
+          .from("tags")
+          .select("id")
+          .eq("organization_id", context.organizationId)
+          .eq("name", choice.tagName)
+          .single()
+
+        if (!surveyTag) {
+          const { data: newTag } = await supabase
+            .from("tags")
+            .insert({ organization_id: context.organizationId, name: choice.tagName })
+            .select("id")
+            .single()
+          surveyTag = newTag
+        }
+
+        if (surveyTag) {
+          await supabase.from("friend_tags").upsert(
+            { friend_id: surveyFriend.id, tag_id: surveyTag.id, auto_assigned: true },
+            { onConflict: "friend_id,tag_id" }
+          )
+        }
+      }
+
+      // 回答ログ記録
+      await supabase.from("message_logs").insert({
+        organization_id: context.organizationId,
+        friend_id: surveyFriend?.id || null,
+        line_user_id: userId,
+        event_type: "survey_answer",
+        content: `seminar_id=${seminarId}&q=${qIndex}&c=${cIndex}&answer=${choice.text}&tag=${choice.tagName}`,
+        raw_event: JSON.parse(JSON.stringify(event)),
+      })
+
+      // 特典メッセージ送信
+      if (event.replyToken && (choice.rewardMessage || choice.rewardUrl)) {
+        const rewardMsg = choice.rewardMessage || "アンケートにご回答いただきありがとうございます！"
+        await replyMessage(
+          event.replyToken,
+          [createSurveyRewardMessage(rewardMsg, choice.rewardUrl)],
+          { accessToken: context.channelAccessToken }
+        )
+      } else if (event.replyToken) {
+        await replyMessage(
+          event.replyToken,
+          [{ type: "text", text: "アンケートにご回答いただきありがとうございます！" }],
+          { accessToken: context.channelAccessToken }
+        )
+      }
       break
     }
     default:
