@@ -1,7 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/server"
-import { getProfile, replyMessage } from "./client"
+import { getProfile, replyMessage, pushMessage } from "./client"
 import { createWelcomeMessage, createDefaultReply } from "./messages"
-import { createSeminarListMessage, createApplyConfirmMessage, createFollowupResponseMessage, createSurveyRewardMessage } from "./flex-templates"
+import { createSeminarListMessage, createApplyConfirmMessage, createFollowupResponseMessage, createSurveyRewardMessage, createSingleQuestionMessage } from "./flex-templates"
 
 // Webhookイベントの簡易型（LINEから受信するrawデータ）
 interface WebhookEvent {
@@ -736,26 +736,51 @@ async function handlePostback(
       break
     }
     case "survey_answer": {
-      const seminarId = params.get("seminar_id")
+      const surveyId = params.get("seminar_id") // survey_id を seminar_id パラメータで渡している
       const qIndex = parseInt(params.get("q") || "0", 10)
       const cIndex = parseInt(params.get("c") || "0", 10)
       const userId = event.source.userId
-      if (!seminarId || !userId) break
+      if (!surveyId || !userId) break
 
-      // アンケート設定を取得
-      const { data: survey } = await (supabase
-        .from("seminar_surveys" as never)
-        .select("*")
-        .eq("seminar_id" as never, seminarId)
-        .eq("organization_id" as never, context.organizationId)
-        .single() as unknown as Promise<{ data: { questions: string } | null; error: unknown }>)
-
-      if (!survey) break
-
-      const questions = JSON.parse(survey.questions || "[]") as Array<{
+      // スタンドアロンアンケート (surveys テーブル) を先に検索
+      let surveyTitle = ""
+      let questions: Array<{
         label: string
-        choices: Array<{ text: string; tagName: string; rewardMessage?: string; rewardUrl?: string }>
-      }>
+        hasReward?: boolean
+        choices: Array<{
+          text: string; tagName: string;
+          rewardMessage?: string; rewardUrl?: string;
+          file?: { url: string; mimeType: string } | null; fileLink?: string;
+        }>
+      }> = []
+
+      const { data: standaloneSurvey } = await (supabase
+        .from("surveys" as never)
+        .select("*")
+        .eq("id" as never, surveyId)
+        .single() as unknown as Promise<{
+          data: { id: string; title: string; questions: string } | null
+          error: unknown
+        }>)
+
+      if (standaloneSurvey) {
+        surveyTitle = standaloneSurvey.title
+        questions = typeof standaloneSurvey.questions === "string"
+          ? JSON.parse(standaloneSurvey.questions)
+          : standaloneSurvey.questions || []
+      } else {
+        // フォールバック: セミナーアンケート
+        const { data: seminarSurvey } = await (supabase
+          .from("seminar_surveys" as never)
+          .select("*")
+          .eq("seminar_id" as never, surveyId)
+          .eq("organization_id" as never, context.organizationId)
+          .single() as unknown as Promise<{ data: { questions: string } | null; error: unknown }>)
+
+        if (!seminarSurvey) break
+        questions = JSON.parse(seminarSurvey.questions || "[]")
+      }
+
       const question = questions[qIndex]
       const choice = question?.choices?.[cIndex]
       if (!choice) break
@@ -794,30 +819,88 @@ async function handlePostback(
         }
       }
 
+      // 回答をsurvey_responsesテーブルに記録
+      try {
+        await (supabase
+          .from("survey_responses" as never)
+          .insert({
+            organization_id: context.organizationId,
+            survey_id: surveyId,
+            friend_id: surveyFriend?.id || null,
+            line_user_id: userId,
+            question_index: qIndex,
+            choice_index: cIndex,
+            question_label: question.label,
+            choice_text: choice.text,
+            tag_name: choice.tagName || null,
+          } as never) as unknown as Promise<{ error: unknown }>)
+      } catch {
+        // テーブル未作成でもエラーを無視して続行
+      }
+
       // 回答ログ記録
       await supabase.from("message_logs").insert({
         organization_id: context.organizationId,
         friend_id: surveyFriend?.id || null,
         line_user_id: userId,
         event_type: "survey_answer",
-        content: `seminar_id=${seminarId}&q=${qIndex}&c=${cIndex}&answer=${choice.text}&tag=${choice.tagName}`,
+        content: `survey_id=${surveyId}&q=${qIndex}&c=${cIndex}&answer=${choice.text}&tag=${choice.tagName}`,
         raw_event: JSON.parse(JSON.stringify(event)),
       })
 
-      // 特典メッセージ送信
-      if (event.replyToken && (choice.rewardMessage || choice.rewardUrl)) {
+      // 特典の有無を判定（hasReward フラグ or 特典情報の存在）
+      const hasReward = question.hasReward !== false && (choice.rewardMessage || choice.rewardUrl)
+
+      // replyToken で特典 or 回答確認メッセージを送信
+      let replyUsed = false
+      if (event.replyToken && hasReward) {
         const rewardMsg = choice.rewardMessage || "アンケートにご回答いただきありがとうございます！"
         await replyMessage(
           event.replyToken,
           [createSurveyRewardMessage(rewardMsg, choice.rewardUrl)],
           { accessToken: context.channelAccessToken }
         )
-      } else if (event.replyToken) {
-        await replyMessage(
-          event.replyToken,
-          [{ type: "text", text: "アンケートにご回答いただきありがとうございます！" }],
-          { accessToken: context.channelAccessToken }
-        )
+        replyUsed = true
+      }
+
+      // 次の質問があれば送信（段階的送信）
+      const nextQIndex = qIndex + 1
+      if (nextQIndex < questions.length) {
+        const nextQuestion = questions[nextQIndex]
+        const nextMessage = createSingleQuestionMessage({
+          surveyId,
+          surveyTitle: surveyTitle || "アンケート",
+          question: nextQuestion,
+          questionIndex: nextQIndex,
+          totalQuestions: questions.length,
+        })
+
+        if (!replyUsed && event.replyToken) {
+          // 特典なし → replyTokenで次の質問を送信
+          await replyMessage(
+            event.replyToken,
+            [nextMessage],
+            { accessToken: context.channelAccessToken }
+          )
+        } else {
+          // 特典送信済み → pushMessageで次の質問を送信
+          try {
+            await pushMessage(userId, [nextMessage], {
+              accessToken: context.channelAccessToken,
+            })
+          } catch {
+            // push失敗は無視
+          }
+        }
+      } else {
+        // 全問回答完了
+        if (!replyUsed && event.replyToken) {
+          await replyMessage(
+            event.replyToken,
+            [{ type: "text", text: "アンケートにご回答いただきありがとうございます！全ての質問にお答えいただきました。" }],
+            { accessToken: context.channelAccessToken }
+          )
+        }
       }
       break
     }

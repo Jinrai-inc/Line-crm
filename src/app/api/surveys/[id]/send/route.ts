@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getAuthenticatedOrgId } from "@/lib/api/auth"
 import { createAdminClient } from "@/lib/supabase/server"
-import { pushMessage, multicast } from "@/lib/line/client"
-import { createSurveyMessage } from "@/lib/line/flex-templates"
+import { pushMessage } from "@/lib/line/client"
+import { createSingleQuestionMessage } from "@/lib/line/flex-templates"
 
 // スタンドアロンアンケート送信
 export async function POST(
@@ -94,22 +94,27 @@ export async function POST(
       return NextResponse.json({ sentCount: 0, failedCount: 0 })
     }
 
-    // survey_idをseminar_idの代わりに使う（postbackのdata形式を合わせる）
-    const surveyMessage = createSurveyMessage({
-      seminarId: survey.id,
-      seminarTitle: "アンケート",
+    // 最初の1問目だけ送信（段階的送信）
+    const firstQuestion = questions[0]
+    if (!firstQuestion) {
+      return NextResponse.json({ error: "質問がありません" }, { status: 400 })
+    }
+
+    const firstMessage = createSingleQuestionMessage({
+      surveyId: survey.id,
       surveyTitle: survey.title,
-      questions,
+      question: firstQuestion,
+      questionIndex: 0,
+      totalQuestions: questions.length,
     })
 
     let sentCount = 0
     let failedCount = 0
     const userIds = targetFriends.map((f: { line_user_id: string }) => f.line_user_id)
 
-    // 500件ずつバッチ送信（multicastはFlexMessage非対応のためpushMessageで送信）
     for (const userId of userIds) {
       try {
-        await pushMessage(userId, [surveyMessage], {
+        await pushMessage(userId, [firstMessage], {
           accessToken: lineAccount.channel_access_token,
         })
         sentCount++

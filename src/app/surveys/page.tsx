@@ -41,6 +41,7 @@ import {
   Link as LinkIcon,
   CheckCircle,
   XCircle,
+  BarChart3,
 } from "lucide-react"
 import Link from "next/link"
 
@@ -373,15 +374,40 @@ export default function SurveysPage() {
                       <Pencil className="h-3 w-3 mr-1" />
                       編集
                     </Button>
-                    <Button
-                      size="sm"
-                      className="flex-1 h-8 text-xs text-white hover:opacity-90"
-                      style={{ backgroundColor: accentColor }}
-                      onClick={() => openSendDialog(survey)}
-                    >
-                      <Send className="h-3 w-3 mr-1" />
-                      送信
-                    </Button>
+                    {survey.status === "published" ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="flex-1 h-8 text-xs"
+                        asChild
+                      >
+                        <Link href={`/surveys/${survey.id}`}>
+                          <BarChart3 className="h-3 w-3 mr-1" />
+                          結果
+                        </Link>
+                      </Button>
+                    ) : (
+                      <Button
+                        size="sm"
+                        className="flex-1 h-8 text-xs text-white hover:opacity-90"
+                        style={{ backgroundColor: accentColor }}
+                        onClick={() => openSendDialog(survey)}
+                      >
+                        <Send className="h-3 w-3 mr-1" />
+                        送信
+                      </Button>
+                    )}
+                    {survey.status === "published" && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 w-8 p-0"
+                        onClick={() => openSendDialog(survey)}
+                        title="再送信"
+                      >
+                        <Send className="h-3.5 w-3.5 text-gray-400" />
+                      </Button>
+                    )}
                     <Button
                       variant="ghost"
                       size="sm"

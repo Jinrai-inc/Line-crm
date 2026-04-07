@@ -764,6 +764,46 @@ export function createSurveyMessage(params: SurveyMessageParams) {
   return flexMessage(surveyTitle, { type: "carousel", contents: bubbles })
 }
 
+// 1問だけのアンケートメッセージ（段階的送信用）
+export function createSingleQuestionMessage(params: {
+  surveyId: string
+  surveyTitle: string
+  question: SurveyQuestion
+  questionIndex: number
+  totalQuestions: number
+}) {
+  const { surveyId, surveyTitle, question, questionIndex, totalQuestions } = params
+
+  const choiceButtons = question.choices.map((choice, cIndex) => ({
+    type: "button" as const,
+    style: "primary" as const,
+    color: "#06C755",
+    height: "sm" as const,
+    action: {
+      type: "postback" as const,
+      label: choice.text,
+      data: `action=survey_answer&seminar_id=${surveyId}&q=${questionIndex}&c=${cIndex}`,
+      displayText: choice.text,
+    },
+  }))
+
+  return flexMessage(`${surveyTitle} (${questionIndex + 1}/${totalQuestions})`, {
+    type: "bubble" as const,
+    body: {
+      type: "box" as const,
+      layout: "vertical" as const,
+      contents: [
+        { type: "text" as const, text: "📋 " + surveyTitle, weight: "bold" as const, size: "md" as const, color: "#06C755" },
+        { type: "text" as const, text: `質問 ${questionIndex + 1} / ${totalQuestions}`, size: "xs" as const, color: "#999999", margin: "sm" as const },
+        { type: "separator" as const, margin: "lg" as const },
+        { type: "text" as const, text: question.label, weight: "bold" as const, size: "md" as const, margin: "lg" as const, wrap: true as const },
+        { type: "text" as const, text: "以下からお選びください", size: "xs" as const, color: "#999999", margin: "sm" as const },
+      ],
+    },
+    footer: { type: "box" as const, layout: "vertical" as const, spacing: "sm" as const, contents: choiceButtons },
+  })
+}
+
 // アンケート回答後の特典送信 Flex Message
 export function createSurveyRewardMessage(
   thankMessage: string,
