@@ -126,6 +126,13 @@ export default function FriendDetailPage() {
     fetchFriend()
   }, [fetchFriend])
 
+  // 詳細ページを開いた時に既読にする
+  useEffect(() => {
+    if (friendId) {
+      fetch(`/api/friends/${friendId}/read`, { method: "POST" }).catch(() => {})
+    }
+  }, [friendId])
+
   const handleSendMessage = async () => {
     if (!message.trim() || sending) return
     setSending(true)

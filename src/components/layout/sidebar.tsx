@@ -53,11 +53,13 @@ function NavLink({
   activeColor,
   pathname,
   onClick,
+  badge,
 }: {
   item: NavItem
   activeColor: string
   pathname: string
   onClick?: () => void
+  badge?: number
 }) {
   const Icon = iconMap[item.icon]
   const isActive = pathname === item.href
@@ -74,7 +76,12 @@ function NavLink({
       style={isActive ? { backgroundColor: activeColor } : undefined}
     >
       {Icon && <Icon className="h-4 w-4 shrink-0" />}
-      <span>{item.label}</span>
+      <span className="flex-1">{item.label}</span>
+      {badge !== undefined && badge > 0 && (
+        <span className="ml-auto inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 text-xs font-bold text-white bg-red-500 rounded-full">
+          {badge > 99 ? "99+" : badge}
+        </span>
+      )}
     </Link>
   )
 }
@@ -91,6 +98,25 @@ export function Sidebar() {
   const currentModule = modules[activeModule]
   const otherModuleId = activeModule === "seminar" ? "marriage" : "seminar"
   const otherModule = modules[otherModuleId]
+
+  // 未読メッセージ数
+  const [unreadCount, setUnreadCount] = useState(0)
+
+  useEffect(() => {
+    async function fetchUnread() {
+      try {
+        const res = await fetch("/api/friends/unread")
+        if (res.ok) {
+          const json = await res.json()
+          setUnreadCount(json.unreadCount || 0)
+        }
+      } catch { /* ignore */ }
+    }
+    fetchUnread()
+    // 30秒ごとにポーリング
+    const interval = setInterval(fetchUnread, 30000)
+    return () => clearInterval(interval)
+  }, [pathname]) // pathnameが変わるたびにリフレッシュ
 
   // Swipe-to-close gesture support
   const touchStartX = useRef<number | null>(null)
@@ -195,6 +221,7 @@ export function Sidebar() {
               activeColor={currentModule.color}
               pathname={pathname}
               onClick={() => setSidebarOpen(false)}
+              badge={item.href === "/friends" ? unreadCount : undefined}
             />
           ))}
 

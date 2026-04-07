@@ -118,6 +118,7 @@ export default function FriendsPage() {
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [allTags, setAllTags] = useState<Tag[]>([])
+  const [unreadFriendIds, setUnreadFriendIds] = useState<Set<string>>(new Set())
 
   // Dialog state
   const [addDialogOpen, setAddDialogOpen] = useState(false)
@@ -172,6 +173,21 @@ export default function FriendsPage() {
       .then((json) => setAllTags(json.data ?? []))
       .catch(() => {})
   }, [])
+
+  // 未読状態を取得
+  const fetchUnread = useCallback(async () => {
+    try {
+      const res = await fetch("/api/friends/unread")
+      if (res.ok) {
+        const json = await res.json()
+        setUnreadFriendIds(new Set(json.unreadFriendIds || []))
+      }
+    } catch { /* ignore */ }
+  }, [])
+
+  useEffect(() => {
+    fetchUnread()
+  }, [fetchUnread])
 
   // ── Helpers ────────────────────────────────────────────────────────
 
@@ -536,14 +552,19 @@ export default function FriendsPage() {
                               href={`/friends/${friend.id}`}
                               className="flex items-center gap-3 hover:opacity-80 transition-opacity"
                             >
-                              <Avatar className="size-8">
-                                {friend.picture_url && (
-                                  <AvatarImage src={friend.picture_url} alt={friend.display_name || ""} />
+                              <div className="relative">
+                                <Avatar className="size-8">
+                                  {friend.picture_url && (
+                                    <AvatarImage src={friend.picture_url} alt={friend.display_name || ""} />
+                                  )}
+                                  <AvatarFallback>
+                                    {(friend.display_name || "?").charAt(0)}
+                                  </AvatarFallback>
+                                </Avatar>
+                                {unreadFriendIds.has(friend.id) && (
+                                  <span className="absolute -top-0.5 -right-0.5 size-3 bg-red-500 rounded-full border-2 border-white" />
                                 )}
-                                <AvatarFallback>
-                                  {(friend.display_name || "?").charAt(0)}
-                                </AvatarFallback>
-                              </Avatar>
+                              </div>
                               <span className="font-medium">{friend.display_name || "名前なし"}</span>
                             </Link>
                           </TableCell>
@@ -660,14 +681,19 @@ export default function FriendsPage() {
                             onClick={(e) => e.preventDefault()}
                           />
                         </div>
-                        <Avatar className="size-10">
-                          {friend.picture_url && (
-                            <AvatarImage src={friend.picture_url} alt={friend.display_name || ""} />
+                        <div className="relative">
+                          <Avatar className="size-10">
+                            {friend.picture_url && (
+                              <AvatarImage src={friend.picture_url} alt={friend.display_name || ""} />
+                            )}
+                            <AvatarFallback>
+                              {(friend.display_name || "?").charAt(0)}
+                            </AvatarFallback>
+                          </Avatar>
+                          {unreadFriendIds.has(friend.id) && (
+                            <span className="absolute -top-0.5 -right-0.5 size-3 bg-red-500 rounded-full border-2 border-white" />
                           )}
-                          <AvatarFallback>
-                            {(friend.display_name || "?").charAt(0)}
-                          </AvatarFallback>
-                        </Avatar>
+                        </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
                             <span className="font-medium truncate">
