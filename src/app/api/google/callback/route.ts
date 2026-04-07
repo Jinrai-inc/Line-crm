@@ -6,6 +6,15 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const code = searchParams.get("code")
+    const errorParam = searchParams.get("error")
+
+    // Googleからのエラー（アクセス拒否、未審査アプリ等）
+    if (errorParam) {
+      const errorType = errorParam === "access_denied" ? "access_denied" : "google_error"
+      return NextResponse.redirect(
+        new URL(`/settings/google-calendar?error=${errorType}`, request.url)
+      )
+    }
 
     if (!code) {
       return NextResponse.redirect(

@@ -10,6 +10,8 @@ import {
   XCircle,
   Loader2,
   ExternalLink,
+  AlertTriangle,
+  ShieldAlert,
 } from "lucide-react"
 
 interface CalendarSettings {
@@ -29,6 +31,7 @@ export default function GoogleCalendarSettingsPage() {
     type: "success" | "error"
     message: string
   } | null>(null)
+  const [showTestUserGuide, setShowTestUserGuide] = useState(false)
 
   // Check URL params for success/error messages
   useEffect(() => {
@@ -45,12 +48,17 @@ export default function GoogleCalendarSettingsPage() {
         unauthorized: "ログインしてください",
         no_org: "組織情報が見つかりません",
         save_failed: "設定の保存に失敗しました",
+        access_denied: "Googleアカウントへのアクセスが拒否されました。テストユーザーとして登録されていない可能性があります。",
+        google_error: "Google認証でエラーが発生しました",
         unknown: "不明なエラーが発生しました",
       }
       setToast({
         type: "error",
         message: messages[error] || "エラーが発生しました",
       })
+      if (error === "access_denied") {
+        setShowTestUserGuide(true)
+      }
       window.history.replaceState({}, "", "/settings/google-calendar")
     }
   }, [])
@@ -229,23 +237,70 @@ export default function GoogleCalendarSettingsPage() {
           </div>
         ) : (
           /* Not connected state */
-          <div className="rounded-lg border border-gray-200 bg-white p-8 shadow-sm text-center">
-            <div className="mx-auto flex items-center justify-center h-14 w-14 rounded-full bg-blue-50 mb-4">
-              <Calendar className="h-7 w-7 text-blue-500" />
+          <div className="space-y-4">
+            {/* テストユーザー登録ガイド */}
+            {showTestUserGuide && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-5">
+                <div className="flex items-start gap-3">
+                  <ShieldAlert className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+                  <div>
+                    <h3 className="text-sm font-semibold text-amber-900">
+                      Google審査が未完了のため、テストユーザーの登録が必要です
+                    </h3>
+                    <p className="text-sm text-amber-800 mt-1">
+                      以下の手順でテストユーザーを追加してください：
+                    </p>
+                    <ol className="text-sm text-amber-800 mt-2 list-decimal list-inside space-y-1">
+                      <li>
+                        <a
+                          href="https://console.cloud.google.com/apis/credentials/consent"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="underline font-medium hover:text-amber-900"
+                        >
+                          Google Cloud Console の OAuth同意画面
+                        </a>
+                        を開く
+                      </li>
+                      <li>「テストユーザー」セクションの「+ ADD USERS」をクリック</li>
+                      <li>連携したいGoogleアカウントのメールアドレスを追加</li>
+                      <li>保存後、再度「Googleカレンダーを連携する」をクリック</li>
+                    </ol>
+                    <p className="text-xs text-amber-600 mt-3">
+                      ※ Google審査を完了すると、すべてのGoogleアカウントで利用可能になります
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="rounded-lg border border-gray-200 bg-white p-8 shadow-sm text-center">
+              <div className="mx-auto flex items-center justify-center h-14 w-14 rounded-full bg-blue-50 mb-4">
+                <Calendar className="h-7 w-7 text-blue-500" />
+              </div>
+              <h3 className="text-base font-semibold text-gray-900 mb-1">
+                Googleカレンダー未連携
+              </h3>
+              <p className="text-sm text-gray-500 mb-6">
+                Googleカレンダーと連携すると、予定の管理や同期ができます。
+              </p>
+              <a
+                href="/api/google/auth"
+                className="inline-flex items-center rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
+              >
+                <ExternalLink className="mr-2 h-4 w-4" />
+                Googleカレンダーを連携する
+              </a>
+
+              {!showTestUserGuide && (
+                <button
+                  onClick={() => setShowTestUserGuide(true)}
+                  className="block mx-auto mt-4 text-xs text-gray-400 hover:text-gray-600 underline"
+                >
+                  連携でエラーが出る場合はこちら
+                </button>
+              )}
             </div>
-            <h3 className="text-base font-semibold text-gray-900 mb-1">
-              Googleカレンダー未連携
-            </h3>
-            <p className="text-sm text-gray-500 mb-6">
-              Googleカレンダーと連携すると、予定の管理や同期ができます。
-            </p>
-            <a
-              href="/api/google/auth"
-              className="inline-flex items-center rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
-            >
-              <ExternalLink className="mr-2 h-4 w-4" />
-              Googleカレンダーを連携する
-            </a>
           </div>
         )}
       </div>
