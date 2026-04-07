@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
     const { supabase, orgId } = auth
 
     const body = await request.json()
-    const { secretKey, publishableKey, webhookSecret } = body
+    const { secretKey, publishableKey, webhookSecret, paymentAutoEnabled, paymentAutoMessage, paymentAutoUrl } = body
 
     if (!secretKey || !publishableKey) {
       return NextResponse.json({ error: "シークレットキーと公開キーは必須です" }, { status: 400 })
@@ -44,15 +44,24 @@ export async function POST(request: NextRequest) {
       .eq("organization_id", orgId)
       .single()
 
+    const settingsData: Record<string, unknown> = {
+      stripe_secret_key: secretKey,
+      stripe_publishable_key: publishableKey,
+      stripe_webhook_secret: webhookSecret || null,
+      updated_at: new Date().toISOString(),
+    }
+
+    // 入金後自動メッセージ設定（送信された場合のみ更新）
+    if (paymentAutoEnabled !== undefined) {
+      settingsData.payment_auto_enabled = paymentAutoEnabled
+      settingsData.payment_auto_message = paymentAutoMessage || null
+      settingsData.payment_auto_url = paymentAutoUrl || null
+    }
+
     if (existing) {
       const { error } = await supabase
         .from("stripe_settings")
-        .update({
-          stripe_secret_key: secretKey,
-          stripe_publishable_key: publishableKey,
-          stripe_webhook_secret: webhookSecret || null,
-          updated_at: new Date().toISOString(),
-        })
+        .update(settingsData)
         .eq("id", existing.id)
       if (error) throw error
     } else {
@@ -60,9 +69,7 @@ export async function POST(request: NextRequest) {
         .from("stripe_settings")
         .insert({
           organization_id: orgId,
-          stripe_secret_key: secretKey,
-          stripe_publishable_key: publishableKey,
-          stripe_webhook_secret: webhookSecret || null,
+          ...settingsData,
         })
       if (error) throw error
     }

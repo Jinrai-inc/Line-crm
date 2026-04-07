@@ -10,6 +10,7 @@ import {
   CheckCircle,
   XCircle,
   AlertTriangle,
+  Send,
 } from "lucide-react"
 
 interface TestResult {
@@ -30,6 +31,9 @@ export default function StripeSettingsPage() {
     message: string
   } | null>(null)
   const [testResult, setTestResult] = useState<TestResult>({ status: "idle" })
+  const [paymentAutoEnabled, setPaymentAutoEnabled] = useState(false)
+  const [paymentAutoMessage, setPaymentAutoMessage] = useState("")
+  const [paymentAutoUrl, setPaymentAutoUrl] = useState("")
 
   // 初期データ取得
   useEffect(() => {
@@ -42,6 +46,9 @@ export default function StripeSettingsPage() {
           setSecretKey(data.settings.stripe_secret_key || "")
           setPublishableKey(data.settings.stripe_publishable_key || "")
           setWebhookSecret(data.settings.stripe_webhook_secret || "")
+          setPaymentAutoEnabled(data.settings.payment_auto_enabled || false)
+          setPaymentAutoMessage(data.settings.payment_auto_message || "")
+          setPaymentAutoUrl(data.settings.payment_auto_url || "")
         }
         setWebhookUrl(
           `${process.env.NEXT_PUBLIC_APP_URL || window.location.origin}/api/stripe/webhook`
@@ -132,6 +139,9 @@ export default function StripeSettingsPage() {
           secretKey,
           publishableKey,
           webhookSecret,
+          paymentAutoEnabled,
+          paymentAutoMessage,
+          paymentAutoUrl,
         }),
       })
       const data = await res.json()
@@ -322,6 +332,94 @@ export default function StripeSettingsPage() {
               )}
             </button>
           </div>
+        </div>
+        {/* 入金後自動メッセージ設定 */}
+        <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+          <div className="flex items-center gap-2 mb-4">
+            <Send className="h-5 w-5 text-green-600" />
+            <h2 className="text-lg font-semibold text-gray-900">
+              入金後自動メッセージ
+            </h2>
+          </div>
+          <p className="text-sm text-gray-500 mb-4">
+            Stripeで入金が確認された際に、LINEで会議URLなどを自動送信します。
+          </p>
+
+          {/* 有効/無効トグル */}
+          <div className="flex items-center gap-3 mb-4">
+            <button
+              type="button"
+              onClick={() => setPaymentAutoEnabled(!paymentAutoEnabled)}
+              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                paymentAutoEnabled ? "bg-green-500" : "bg-gray-200"
+              }`}
+            >
+              <span
+                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                  paymentAutoEnabled ? "translate-x-5" : "translate-x-0"
+                }`}
+              />
+            </button>
+            <span className="text-sm font-medium text-gray-700">
+              {paymentAutoEnabled ? "有効" : "無効"}
+            </span>
+          </div>
+
+          {paymentAutoEnabled && (
+            <div className="space-y-4 border-t border-gray-100 pt-4">
+              {/* 会議URL */}
+              <div>
+                <label
+                  htmlFor="paymentAutoUrl"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  会議URL <span className="text-red-500">*</span>
+                </label>
+                <input
+                  id="paymentAutoUrl"
+                  type="url"
+                  value={paymentAutoUrl}
+                  onChange={(e) => setPaymentAutoUrl(e.target.value)}
+                  placeholder="https://zoom.us/j/... や https://meet.google.com/..."
+                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-green-500 focus:ring-1 focus:ring-green-500 outline-none"
+                />
+                <p className="mt-1 text-xs text-gray-400">Zoom、Google Meet等の会議URLを入力してください</p>
+              </div>
+
+              {/* メッセージ本文 */}
+              <div>
+                <label
+                  htmlFor="paymentAutoMessage"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  メッセージ本文
+                </label>
+                <textarea
+                  id="paymentAutoMessage"
+                  value={paymentAutoMessage}
+                  onChange={(e) => setPaymentAutoMessage(e.target.value)}
+                  placeholder="お支払いありがとうございます。以下のURLから会議にご参加ください。"
+                  rows={3}
+                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-green-500 focus:ring-1 focus:ring-green-500 outline-none resize-none"
+                />
+                <p className="mt-1 text-xs text-gray-400">空欄の場合はデフォルトメッセージが使用されます</p>
+              </div>
+
+              {/* プレビュー */}
+              <div className="rounded-lg border border-green-200 bg-green-50 p-4">
+                <p className="text-xs font-medium text-green-800 mb-2">LINEメッセージプレビュー</p>
+                <div className="rounded-lg bg-white border border-green-100 p-3 space-y-2">
+                  <p className="text-sm font-bold text-green-600">お支払い確認</p>
+                  <p className="text-sm text-gray-700">
+                    {paymentAutoMessage || "お支払いありがとうございます。以下のURLから会議にご参加ください。"}
+                  </p>
+                  <div className="rounded-md bg-green-500 text-white text-center py-2 text-sm font-medium">
+                    会議URLを開く
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

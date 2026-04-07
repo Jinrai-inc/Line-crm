@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
 import { createStripeClient } from "@/lib/stripe/client"
+import { pushMessage } from "@/lib/line/client"
 import type Stripe from "stripe"
 
 // Stripe Webhookハンドラ
@@ -61,6 +62,110 @@ export async function POST(request: NextRequest) {
           .eq("stripe_checkout_session_id", session.id)
         if (error) {
           console.error("Payment update error (checkout.session.completed):", error)
+        }
+
+        // 入金後自動メッセージ送信
+        const settings = matchedSettings as Record<string, unknown>
+        if (settings.payment_auto_enabled && settings.payment_auto_url) {
+          try {
+            // friend_idを取得（メタデータまたはpaymentsテーブルから）
+            const friendId = session.metadata?.friend_id
+            let lineUserId: string | null = null
+
+            if (friendId) {
+              const { data: friend } = await supabase
+                .from("friends")
+                .select("line_user_id")
+                .eq("id", friendId)
+                .single()
+              lineUserId = friend?.line_user_id || null
+            }
+
+            if (!lineUserId) {
+              // paymentsテーブルからfriend_idを取得
+              const { data: payment } = await supabase
+                .from("payments")
+                .select("friend_id")
+                .eq("stripe_checkout_session_id", session.id)
+                .single()
+              if (payment?.friend_id) {
+                const { data: friend } = await supabase
+                  .from("friends")
+                  .select("line_user_id")
+                  .eq("id", payment.friend_id)
+                  .single()
+                lineUserId = friend?.line_user_id || null
+              }
+            }
+
+            if (lineUserId) {
+              // LINE設定を取得
+              const { data: lineAccount } = await supabase
+                .from("line_accounts")
+                .select("channel_access_token")
+                .eq("organization_id", matchedSettings.organization_id!)
+                .single()
+
+              if (lineAccount?.channel_access_token) {
+                const messages: unknown[] = []
+                const autoMessage = (settings.payment_auto_message as string) || "お支払いありがとうございます。以下のURLから会議にご参加ください。"
+                const autoUrl = settings.payment_auto_url as string
+
+                messages.push({
+                  type: "flex",
+                  altText: autoMessage,
+                  contents: {
+                    type: "bubble",
+                    body: {
+                      type: "box",
+                      layout: "vertical",
+                      contents: [
+                        {
+                          type: "text",
+                          text: "お支払い確認",
+                          weight: "bold",
+                          size: "lg",
+                          color: "#06C755",
+                        },
+                        {
+                          type: "text",
+                          text: autoMessage,
+                          wrap: true,
+                          margin: "md",
+                          size: "sm",
+                          color: "#333333",
+                        },
+                      ],
+                    },
+                    footer: {
+                      type: "box",
+                      layout: "vertical",
+                      spacing: "sm",
+                      contents: [
+                        {
+                          type: "button",
+                          style: "primary",
+                          color: "#06C755",
+                          action: {
+                            type: "uri",
+                            label: "会議URLを開く",
+                            uri: autoUrl,
+                          },
+                        },
+                      ],
+                    },
+                  },
+                })
+
+                await pushMessage(lineUserId, messages, {
+                  accessToken: lineAccount.channel_access_token,
+                })
+              }
+            }
+          } catch (autoMsgError) {
+            console.error("Payment auto-message send error:", autoMsgError)
+            // 自動メッセージ送信失敗は決済処理に影響させない
+          }
         }
         break
       }
