@@ -39,6 +39,8 @@ import {
   Copy,
   Image as ImageIcon,
   Link as LinkIcon,
+  CheckCircle,
+  XCircle,
 } from "lucide-react"
 import Link from "next/link"
 
@@ -99,6 +101,16 @@ export default function SurveysPage() {
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([])
   const [seminars, setSeminars] = useState<{ id: string; title: string }[]>([])
   const [selectedSeminarId, setSelectedSeminarId] = useState("")
+
+  // Toast
+  const [toast, setToast] = useState<{ type: "success" | "error"; message: string } | null>(null)
+
+  useEffect(() => {
+    if (toast) {
+      const timer = setTimeout(() => setToast(null), 4000)
+      return () => clearTimeout(timer)
+    }
+  }, [toast])
 
   const fetchSurveys = useCallback(async () => {
     try {
@@ -163,9 +175,15 @@ export default function SurveysPage() {
           body: JSON.stringify({ title, questions, status }),
         })
         if (res.ok) {
+          const json = await res.json()
+          setEditingSurvey(json.data)
           setSaved(true)
           setTimeout(() => setSaved(false), 3000)
+          setToast({ type: "success", message: "アンケートを保存しました" })
           fetchSurveys()
+        } else {
+          const json = await res.json().catch(() => ({}))
+          setToast({ type: "error", message: json.error || "保存に失敗しました" })
         }
       } else {
         const res = await fetch("/api/surveys", {
@@ -178,11 +196,15 @@ export default function SurveysPage() {
           setEditingSurvey(json.data)
           setSaved(true)
           setTimeout(() => setSaved(false), 3000)
+          setToast({ type: "success", message: "アンケートを作成しました" })
           fetchSurveys()
+        } else {
+          const json = await res.json().catch(() => ({}))
+          setToast({ type: "error", message: json.error || "作成に失敗しました" })
         }
       }
     } catch {
-      console.error("保存に失敗しました")
+      setToast({ type: "error", message: "保存に失敗しました。ネットワーク接続を確認してください。" })
     } finally {
       setSaving(false)
     }
@@ -191,10 +213,16 @@ export default function SurveysPage() {
   async function handleDelete(id: string) {
     if (!confirm("このアンケートを削除しますか？")) return
     try {
-      await fetch(`/api/surveys/${id}`, { method: "DELETE" })
-      fetchSurveys()
+      const res = await fetch(`/api/surveys/${id}`, { method: "DELETE" })
+      if (res.ok) {
+        setToast({ type: "success", message: "アンケートを削除しました" })
+        fetchSurveys()
+      } else {
+        const json = await res.json().catch(() => ({}))
+        setToast({ type: "error", message: json.error || "削除に失敗しました" })
+      }
     } catch {
-      console.error("削除に失敗しました")
+      setToast({ type: "error", message: "削除に失敗しました" })
     }
   }
 
@@ -679,6 +707,18 @@ export default function SurveysPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* トースト通知 */}
+      {toast && (
+        <div className="fixed bottom-6 right-6 z-50 animate-in slide-in-from-bottom-4 fade-in duration-300">
+          <div className={`flex items-center gap-2 rounded-lg px-4 py-3 text-sm font-medium text-white shadow-lg ${
+            toast.type === "success" ? "bg-green-600" : "bg-red-600"
+          }`}>
+            {toast.type === "success" ? <CheckCircle className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
+            {toast.message}
+          </div>
+        </div>
+      )}
     </AppLayout>
   )
 }

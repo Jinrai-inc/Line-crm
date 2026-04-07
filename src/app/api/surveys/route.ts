@@ -27,7 +27,15 @@ export async function GET() {
         error: unknown
       }>)
 
-    if (error) throw error
+    if (error) {
+      // テーブルが存在しない場合は空配列を返す
+      const errMsg = typeof error === "object" && error !== null && "message" in error
+        ? (error as { message: string }).message : ""
+      if (errMsg.includes("does not exist") || errMsg.includes("relation")) {
+        return NextResponse.json({ data: [], needsMigration: true })
+      }
+      throw error
+    }
     return NextResponse.json({ data: data || [] })
   } catch (error) {
     console.error("Surveys GET error:", error)
@@ -62,7 +70,17 @@ export async function POST(request: NextRequest) {
       .select("*")
       .single() as unknown as Promise<{ data: Record<string, unknown> | null; error: unknown }>)
 
-    if (error) throw error
+    if (error) {
+      const errMsg = typeof error === "object" && error !== null && "message" in error
+        ? (error as { message: string }).message : String(error)
+      console.error("Surveys POST DB error:", errMsg)
+      if (errMsg.includes("does not exist") || errMsg.includes("relation")) {
+        return NextResponse.json({
+          error: "surveysテーブルが存在しません。Supabaseで以下のSQLを実行してください:\n\nCREATE TABLE surveys (\n  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),\n  organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,\n  title TEXT NOT NULL,\n  questions JSONB DEFAULT '[]',\n  status TEXT DEFAULT 'draft',\n  enabled BOOLEAN DEFAULT true,\n  created_by UUID,\n  created_at TIMESTAMPTZ DEFAULT now(),\n  updated_at TIMESTAMPTZ DEFAULT now()\n);",
+        }, { status: 500 })
+      }
+      throw error
+    }
     return NextResponse.json({ data }, { status: 201 })
   } catch (error) {
     console.error("Surveys POST error:", error)
