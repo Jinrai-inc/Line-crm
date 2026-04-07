@@ -225,6 +225,20 @@ export default function BroadcastsPage() {
     }
   }, [activeTab, fetchBroadcasts])
 
+  const resetForm = () => {
+    setTitle("")
+    setMessageType("text")
+    setMessageText("")
+    setImageUrl("")
+    setPreviewImageUrl("")
+    setUploadedFile(null)
+    setTargetType("all")
+    setSelectedTagIds([])
+    setSelectedSeminarId("")
+    setSelectedSurveyId("")
+    setPreviewCount(null)
+  }
+
   const buildTargetFilter = () => {
     if (targetType === "tag") return { tagIds: selectedTagIds }
     if (targetType === "seminar") return { seminarId: selectedSeminarId }
@@ -270,13 +284,7 @@ export default function BroadcastsPage() {
         })
         if (res.ok) {
           setConfirmOpen(false)
-          setTitle("")
-          setMessageType("text")
-          setSelectedSurveyId("")
-          setTargetType("all")
-          setSelectedTagIds([])
-          setSelectedSeminarId("")
-          setPreviewCount(null)
+          resetForm()
           setActiveTab("history")
         }
       } else {
@@ -285,26 +293,17 @@ export default function BroadcastsPage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             title,
-            messageType,
-            messageText: messageType === "text" ? messageText : undefined,
-            imageUrl: messageType !== "text" ? imageUrl : undefined,
-            previewImageUrl: messageType !== "text" ? previewImageUrl : undefined,
+            messageType: messageType === "text" && imageUrl ? "image" : messageType,
+            messageText,
+            imageUrl: imageUrl || undefined,
+            previewImageUrl: previewImageUrl || undefined,
             targetType,
             targetFilter: buildTargetFilter(),
           }),
         })
         if (res.ok) {
           setConfirmOpen(false)
-          setTitle("")
-          setMessageType("text")
-          setMessageText("")
-          setImageUrl("")
-          setPreviewImageUrl("")
-          setUploadedFile(null)
-          setTargetType("all")
-          setSelectedTagIds([])
-          setSelectedSeminarId("")
-          setPreviewCount(null)
+          resetForm()
           setActiveTab("history")
         }
       }
@@ -412,25 +411,49 @@ export default function BroadcastsPage() {
 
               {/* テキストメッセージ */}
               {messageType === "text" && (
-                <div className="space-y-2">
-                  <Label htmlFor="broadcast-message">メッセージ本文</Label>
-                  <Textarea
-                    id="broadcast-message"
-                    placeholder="配信するメッセージを入力してください..."
-                    rows={6}
-                    value={messageText}
-                    onChange={(e) => setMessageText(e.target.value)}
-                  />
-                  <div className="flex justify-end">
-                    <span
-                      className={`text-xs ${
-                        messageText.length > MAX_MESSAGE_LENGTH
-                          ? "text-red-500"
-                          : "text-gray-400"
-                      }`}
-                    >
-                      {messageText.length} / {MAX_MESSAGE_LENGTH}
-                    </span>
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="broadcast-message">メッセージ本文</Label>
+                    <Textarea
+                      id="broadcast-message"
+                      placeholder="配信するメッセージを入力してください..."
+                      rows={6}
+                      value={messageText}
+                      onChange={(e) => setMessageText(e.target.value)}
+                    />
+                    <div className="flex justify-end">
+                      <span
+                        className={`text-xs ${
+                          messageText.length > MAX_MESSAGE_LENGTH
+                            ? "text-red-500"
+                            : "text-gray-400"
+                        }`}
+                      >
+                        {messageText.length} / {MAX_MESSAGE_LENGTH}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* ファイル添付（テキスト配信時） */}
+                  <div className="space-y-2">
+                    <Label>ファイル添付（任意）</Label>
+                    <FileDropzone
+                      accept="image/jpeg,image/png,image/gif,image/webp,application/pdf"
+                      maxSizeMB={10}
+                      accentColor={accentColor}
+                      uploadedFile={uploadedFile}
+                      onUpload={(file) => {
+                        setUploadedFile(file)
+                        setImageUrl(file.url)
+                      }}
+                      onRemove={() => {
+                        setUploadedFile(null)
+                        setImageUrl("")
+                      }}
+                    />
+                    <p className="text-xs text-gray-500">
+                      画像やPDFを添付するとテキストと一緒に配信されます
+                    </p>
                   </div>
                 </div>
               )}
@@ -773,12 +796,22 @@ export default function BroadcastsPage() {
                 <span>{previewCount}人</span>
               </div>
             )}
-            {(messageType === "image" || messageType === "video") && imageUrl && (
+            {messageType === "survey" && selectedSurveyId && (
+              <div className="flex gap-2">
+                <span className="text-gray-500 shrink-0 w-20">種別:</span>
+                <span>アンケート配信</span>
+              </div>
+            )}
+            {imageUrl && (
               <div>
-                <span className="text-gray-500">{messageType === "image" ? "画像:" : "動画:"}</span>
-                {messageType === "image" ? (
+                <span className="text-gray-500">添付ファイル:</span>
+                {uploadedFile?.mimeType?.startsWith("image/") ? (
                   <div className="mt-1 max-w-[200px]">
                     <img src={imageUrl} alt="配信画像" className="rounded-lg max-h-32 object-contain" />
+                  </div>
+                ) : uploadedFile ? (
+                  <div className="mt-1 p-2 bg-gray-50 rounded-md text-xs text-gray-600">
+                    {uploadedFile.fileName}
                   </div>
                 ) : (
                   <div className="mt-1 p-2 bg-gray-50 rounded-md text-xs text-gray-600 truncate">
