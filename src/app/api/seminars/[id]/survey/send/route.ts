@@ -4,7 +4,7 @@ import { createAdminClient } from "@/lib/supabase/server"
 import { pushMessageBatch } from "@/lib/line/client"
 import { createSurveyMessage } from "@/lib/line/flex-templates"
 
-export const maxDuration = 60
+export const maxDuration = 300
 
 // アンケート一斉送信
 export async function POST(
