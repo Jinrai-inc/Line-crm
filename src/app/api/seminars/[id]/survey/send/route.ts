@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getAuthenticatedOrgId } from "@/lib/api/auth"
 import { createAdminClient } from "@/lib/supabase/server"
-import { pushMessage } from "@/lib/line/client"
+import { pushMessageBatch } from "@/lib/line/client"
 import { createSurveyMessage } from "@/lib/line/flex-templates"
+
+export const maxDuration = 60
 
 // アンケート一斉送信
 export async function POST(
@@ -106,10 +108,7 @@ export async function POST(
         .filter((f): f is { line_user_id: string } => f !== null)
     }
 
-    // アンケートFlex Message作成・送信
-    let sentCount = 0
-    let failedCount = 0
-
+    // アンケートFlex Message作成
     const surveyMessage = createSurveyMessage({
       seminarId: id,
       seminarTitle: seminar?.title || "セミナー",
@@ -117,18 +116,15 @@ export async function POST(
       questions,
     })
 
-    for (const friend of targetFriends) {
-      try {
-        await pushMessage(
-          friend.line_user_id,
-          [surveyMessage],
-          { accessToken: lineAccount.channel_access_token }
-        )
-        sentCount++
-      } catch {
-        failedCount++
-      }
-    }
+    const userIds = targetFriends.map((f) => f.line_user_id)
+
+    // 並列バッチ送信（10件同時、リトライ付き）
+    const { sentCount, failedCount } = await pushMessageBatch(
+      userIds,
+      [surveyMessage],
+      { accessToken: lineAccount.channel_access_token },
+      10
+    )
 
     return NextResponse.json({ sentCount, failedCount })
   } catch (error) {

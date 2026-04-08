@@ -3,6 +3,8 @@ import { getAuthenticatedOrgId } from "@/lib/api/auth"
 import { pushMessage, multicast, broadcast } from "@/lib/line/client"
 import { createFileDeliveryMessage } from "@/lib/line/flex-templates"
 
+export const maxDuration = 60
+
 // 配信履歴一覧
 export async function GET() {
   try {

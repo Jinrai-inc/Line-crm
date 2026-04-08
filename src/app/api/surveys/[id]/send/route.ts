@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getAuthenticatedOrgId } from "@/lib/api/auth"
 import { createAdminClient } from "@/lib/supabase/server"
-import { pushMessage } from "@/lib/line/client"
+import { pushMessageBatch } from "@/lib/line/client"
 import { createSingleQuestionMessage } from "@/lib/line/flex-templates"
+
+export const maxDuration = 60
 
 // スタンドアロンアンケート送信
 export async function POST(
@@ -108,20 +110,15 @@ export async function POST(
       totalQuestions: questions.length,
     })
 
-    let sentCount = 0
-    let failedCount = 0
     const userIds = targetFriends.map((f: { line_user_id: string }) => f.line_user_id)
 
-    for (const userId of userIds) {
-      try {
-        await pushMessage(userId, [firstMessage], {
-          accessToken: lineAccount.channel_access_token,
-        })
-        sentCount++
-      } catch {
-        failedCount++
-      }
-    }
+    // 並列バッチ送信（10件同時、リトライ付き）
+    const { sentCount, failedCount } = await pushMessageBatch(
+      userIds,
+      [firstMessage],
+      { accessToken: lineAccount.channel_access_token },
+      10
+    )
 
     // ステータスを published に更新
     await (admin
