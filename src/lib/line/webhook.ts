@@ -751,6 +751,7 @@ async function handlePostback(
           text: string; tagName: string;
           rewardMessage?: string; rewardUrl?: string;
           file?: { url: string; fileName?: string; mimeType?: string } | null; fileLink?: string;
+          autoReplyMessage?: string;
         }>
       }> = []
 
@@ -852,13 +853,18 @@ async function handlePostback(
       const hasRewardContent = choice.rewardMessage || choice.rewardUrl || choice.file
       const hasReward = question.hasReward === true && hasRewardContent
 
-      // replyToken で特典メッセージを送信
+      // replyToken で自動返信メッセージ・特典メッセージを送信
       let replyUsed = false
-      if (event.replyToken && hasReward) {
+      if (event.replyToken && (choice.autoReplyMessage || hasReward)) {
         const replyMessages: unknown[] = []
 
+        // 選択肢ごとの自動返信メッセージ
+        if (choice.autoReplyMessage) {
+          replyMessages.push({ type: "text", text: choice.autoReplyMessage })
+        }
+
         // 添付ファイルがある場合は画像/PDFメッセージを送信
-        if (choice.file && choice.file.url) {
+        if (hasReward && choice.file && choice.file.url) {
           if (choice.file.mimeType?.startsWith("image/")) {
             replyMessages.push({
               type: "image",
@@ -875,7 +881,7 @@ async function handlePostback(
         }
 
         // 特典メッセージ or URL がある場合
-        if (choice.rewardMessage || choice.rewardUrl) {
+        if (hasReward && (choice.rewardMessage || choice.rewardUrl)) {
           const rewardMsg = choice.rewardMessage || "アンケートにご回答いただきありがとうございます！"
           replyMessages.push(createSurveyRewardMessage(rewardMsg, choice.rewardUrl))
         }
@@ -903,14 +909,14 @@ async function handlePostback(
         })
 
         if (!replyUsed && event.replyToken) {
-          // 特典なし → replyTokenで次の質問を送信
+          // 自動返信・特典なし → replyTokenで次の質問を送信
           await replyMessage(
             event.replyToken,
             [nextMessage],
             { accessToken: context.channelAccessToken }
           )
         } else {
-          // 特典送信済み → pushMessageで次の質問を送信
+          // 自動返信/特典送信済み → pushMessageで次の質問を送信
           try {
             await pushMessage(userId, [nextMessage], {
               accessToken: context.channelAccessToken,

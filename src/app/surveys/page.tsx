@@ -59,6 +59,7 @@ interface Choice {
   rewardUrl: string
   file?: UploadedFile | null
   fileLink?: string
+  autoReplyMessage?: string
 }
 
 interface Question {
@@ -77,7 +78,7 @@ interface SurveyData {
   updated_at: string
 }
 
-const emptyChoice: Choice = { text: "", tagName: "", rewardMessage: "", rewardUrl: "", file: null, fileLink: "" }
+const emptyChoice: Choice = { text: "", tagName: "", rewardMessage: "", rewardUrl: "", file: null, fileLink: "", autoReplyMessage: "" }
 
 export default function SurveysPage() {
   const accentColor = useAccentColor()
@@ -158,6 +159,7 @@ export default function SurveysPage() {
         ...c,
         file: c.file || null,
         fileLink: c.fileLink || "",
+        autoReplyMessage: c.autoReplyMessage || "",
       })),
     }))
     setQuestions(parsed)
@@ -526,6 +528,19 @@ export default function SurveysPage() {
                               className="h-8"
                             />
                           </div>
+                        </div>
+
+                        {/* 自動返信メッセージ */}
+                        <div className="space-y-1">
+                          <Label className="text-xs flex items-center gap-1">
+                            💬 自動返信メッセージ
+                          </Label>
+                          <Input
+                            value={choice.autoReplyMessage || ""}
+                            onChange={(e) => updateChoice(qIdx, cIdx, "autoReplyMessage", e.target.value)}
+                            placeholder="この選択肢が選ばれた時に返信するメッセージ（任意）"
+                            className="h-8"
+                          />
                         </div>
 
                         {/* ファイル添付 */}
