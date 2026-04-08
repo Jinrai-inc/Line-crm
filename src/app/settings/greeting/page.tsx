@@ -18,6 +18,7 @@ import {
   MessageSquare,
   CalendarClock,
   Eye,
+  ClipboardList,
 } from "lucide-react"
 
 export default function GreetingSettingsPage() {
@@ -36,6 +37,14 @@ export default function GreetingSettingsPage() {
   const [scheduleEnd, setScheduleEnd] = useState("")
   const [scheduleMessage, setScheduleMessage] = useState("")
 
+  // ウェルカムアンケート
+  const [welcomeSurveyId, setWelcomeSurveyId] = useState("")
+  const [surveys, setSurveys] = useState<{ id: string; title: string }[]>([])
+
+  useEffect(() => {
+    fetch("/api/surveys").then(r => r.json()).then(j => setSurveys(j.data ?? [])).catch(() => {})
+  }, [])
+
   useEffect(() => {
     async function fetchSettings() {
       try {
@@ -49,6 +58,7 @@ export default function GreetingSettingsPage() {
             setScheduleStart(json.settings.schedule_start ? json.settings.schedule_start.slice(0, 16) : "")
             setScheduleEnd(json.settings.schedule_end ? json.settings.schedule_end.slice(0, 16) : "")
             setScheduleMessage(json.settings.schedule_message || "")
+            setWelcomeSurveyId(json.settings.welcome_survey_id || "")
           }
         }
       } catch {
@@ -80,6 +90,7 @@ export default function GreetingSettingsPage() {
           scheduleStart: scheduleStart ? new Date(scheduleStart).toISOString() : null,
           scheduleEnd: scheduleEnd ? new Date(scheduleEnd).toISOString() : null,
           scheduleMessage,
+          welcomeSurveyId: welcomeSurveyId || null,
         }),
       })
       if (res.ok) {
@@ -241,6 +252,38 @@ export default function GreetingSettingsPage() {
                 </div>
               </div>
             )}
+          </CardContent>
+        </Card>
+
+        {/* ウェルカムアンケート */}
+        <Card>
+          <CardContent className="p-6 space-y-4">
+            <div className="flex items-center gap-2">
+              <ClipboardList size={20} style={{ color: accentColor }} />
+              <h2 className="text-base font-semibold">ウェルカムアンケート</h2>
+            </div>
+
+            <p className="text-sm text-gray-500">
+              友だち追加後、挨拶メッセージの直後にアンケートを自動送信します。
+              属性調査やフォローアップに活用できます。
+            </p>
+
+            <div className="space-y-2">
+              <Label>送信するアンケート</Label>
+              <select
+                value={welcomeSurveyId}
+                onChange={(e) => setWelcomeSurveyId(e.target.value)}
+                className="w-full h-10 border rounded-md px-3 bg-white text-sm"
+              >
+                <option value="">なし（送信しない）</option>
+                {surveys.map((s) => (
+                  <option key={s.id} value={s.id}>{s.title}</option>
+                ))}
+              </select>
+              <p className="text-xs text-gray-400">
+                アンケートは「アンケート」ページで事前に作成してください。
+              </p>
+            </div>
           </CardContent>
         </Card>
 

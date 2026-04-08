@@ -60,6 +60,7 @@ interface Choice {
   file?: UploadedFile | null
   fileLink?: string
   autoReplyMessage?: string
+  nextQuestionIndex?: number // -1 = アンケート終了, undefined = 次の質問へ
 }
 
 interface Question {
@@ -78,7 +79,7 @@ interface SurveyData {
   updated_at: string
 }
 
-const emptyChoice: Choice = { text: "", tagName: "", rewardMessage: "", rewardUrl: "", file: null, fileLink: "", autoReplyMessage: "" }
+const emptyChoice: Choice = { text: "", tagName: "", rewardMessage: "", rewardUrl: "", file: null, fileLink: "", autoReplyMessage: "", nextQuestionIndex: undefined }
 
 export default function SurveysPage() {
   const accentColor = useAccentColor()
@@ -160,6 +161,7 @@ export default function SurveysPage() {
         file: c.file || null,
         fileLink: c.fileLink || "",
         autoReplyMessage: c.autoReplyMessage || "",
+        nextQuestionIndex: c.nextQuestionIndex,
       })),
     }))
     setQuestions(parsed)
@@ -542,6 +544,40 @@ export default function SurveysPage() {
                             className="h-8"
                           />
                         </div>
+
+                        {/* 条件分岐（質問が2つ以上の場合のみ表示） */}
+                        {questions.length > 1 && (
+                          <div className="space-y-1">
+                            <Label className="text-xs flex items-center gap-1">
+                              🔀 次の質問（分岐）
+                            </Label>
+                            <select
+                              value={choice.nextQuestionIndex === undefined ? "" : String(choice.nextQuestionIndex)}
+                              onChange={(e) => {
+                                const val = e.target.value
+                                setQuestions(questions.map((q, qi) =>
+                                  qi === qIdx ? {
+                                    ...q,
+                                    choices: q.choices.map((c, ci) =>
+                                      ci === cIdx ? { ...c, nextQuestionIndex: val === "" ? undefined : parseInt(val) } : c
+                                    )
+                                  } : q
+                                ))
+                              }}
+                              className="w-full h-8 text-xs border rounded-md px-2 bg-white"
+                            >
+                              <option value="">次の質問へ（順番通り）</option>
+                              {questions.map((q, qi) =>
+                                qi !== qIdx && (
+                                  <option key={qi} value={qi}>
+                                    質問{qi + 1}へ: {q.label || "(未入力)"}
+                                  </option>
+                                )
+                              )}
+                              <option value="-1">アンケート終了</option>
+                            </select>
+                          </div>
+                        )}
 
                         {/* ファイル添付 */}
                         <div className="space-y-1">

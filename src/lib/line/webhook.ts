@@ -185,6 +185,7 @@ async function handleFollow(
           enabled: boolean; message: string | null;
           schedule_enabled: boolean; schedule_start: string | null;
           schedule_end: string | null; schedule_message: string | null;
+          welcome_survey_id: string | null;
         } | null
         error: unknown
       }>)
@@ -226,6 +227,42 @@ async function handleFollow(
           [createWelcomeMessage(context.channelName)],
           { accessToken: context.channelAccessToken }
         )
+      }
+    }
+
+    // ウェルカムアンケートの自動送信
+    if (gs?.welcome_survey_id) {
+      try {
+        const { data: welcomeSurvey } = await (supabase
+          .from("surveys" as never)
+          .select("*")
+          .eq("id" as never, gs.welcome_survey_id)
+          .single() as unknown as Promise<{
+            data: { id: string; title: string; questions: string } | null
+            error: unknown
+          }>)
+
+        if (welcomeSurvey) {
+          const surveyQuestions = typeof welcomeSurvey.questions === "string"
+            ? JSON.parse(welcomeSurvey.questions)
+            : welcomeSurvey.questions || []
+
+          if (surveyQuestions.length > 0) {
+            const firstQuestion = surveyQuestions[0]
+            const firstMessage = createSingleQuestionMessage({
+              surveyId: welcomeSurvey.id,
+              surveyTitle: welcomeSurvey.title,
+              question: firstQuestion,
+              questionIndex: 0,
+              totalQuestions: surveyQuestions.length,
+            })
+            await pushMessage(userId, [firstMessage], {
+              accessToken: context.channelAccessToken,
+            })
+          }
+        }
+      } catch {
+        // ウェルカムアンケート送信失敗は無視
       }
     }
   }
@@ -752,6 +789,7 @@ async function handlePostback(
           rewardMessage?: string; rewardUrl?: string;
           file?: { url: string; fileName?: string; mimeType?: string } | null; fileLink?: string;
           autoReplyMessage?: string;
+          nextQuestionIndex?: number;
         }>
       }> = []
 
@@ -896,9 +934,11 @@ async function handlePostback(
         }
       }
 
-      // 次の質問があれば送信（段階的送信）
-      const nextQIndex = qIndex + 1
-      if (nextQIndex < questions.length) {
+      // 次の質問があれば送信（段階的送信・条件分岐対応）
+      const nextQIndex = choice.nextQuestionIndex !== undefined
+        ? choice.nextQuestionIndex  // 分岐指定あり（-1 = 終了）
+        : qIndex + 1               // 順番通り
+      if (nextQIndex >= 0 && nextQIndex < questions.length) {
         const nextQuestion = questions[nextQIndex]
         const nextMessage = createSingleQuestionMessage({
           surveyId,
