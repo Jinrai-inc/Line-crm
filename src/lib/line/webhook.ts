@@ -1,6 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/server"
 import { getProfile, replyMessage, pushMessage } from "./client"
-import { createWelcomeMessage, createDefaultReply } from "./messages"
+import { createWelcomeMessage } from "./messages"
 import { createSeminarListMessage, createApplyConfirmMessage, createFollowupResponseMessage, createSurveyRewardMessage, createSingleQuestionMessage } from "./flex-templates"
 
 // メッセージタグ置換（{name} → ユーザー名）
@@ -472,14 +472,7 @@ async function handleMessage(
   } else if (text === "予約キャンセル") {
     await handleBookingCancel(event, context)
   } else {
-    // デフォルト応答
-    if (event.replyToken) {
-      await replyMessage(
-        event.replyToken,
-        [createDefaultReply()],
-        { accessToken: context.channelAccessToken }
-      )
-    }
+    // キーワードに該当しない場合は何もしない（LINE側の応答設定に委ねる）
   }
 }
 
