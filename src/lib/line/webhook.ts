@@ -191,6 +191,7 @@ async function handleFollow(
           schedule_enabled: boolean; schedule_start: string | null;
           schedule_end: string | null; schedule_message: string | null;
           welcome_survey_id: string | null;
+          schedule_survey_id: string | null;
           follow_up_messages: string[] | null;
         } | null
         error: unknown
@@ -199,6 +200,7 @@ async function handleFollow(
     const gs = greetingSettings
     let greetingDisabled = false
     let customMessage: string | null = null
+    let isScheduleActive = false
 
     if (gs) {
       if (!gs.enabled) {
@@ -211,6 +213,7 @@ async function handleFollow(
           const end = new Date(gs.schedule_end)
           if (now >= start && now <= end) {
             customMessage = gs.schedule_message
+            isScheduleActive = true
           }
         }
         // 期間指定でなければ通常カスタムメッセージ
@@ -251,13 +254,14 @@ async function handleFollow(
       }
     }
 
-    // ウェルカムアンケートの自動送信
-    if (gs?.welcome_survey_id) {
+    // アンケートの自動送信（期間指定中はschedule_survey_id、通常はwelcome_survey_id）
+    const activeSurveyId = isScheduleActive ? (gs?.schedule_survey_id || gs?.welcome_survey_id) : gs?.welcome_survey_id
+    if (activeSurveyId) {
       try {
         const { data: welcomeSurvey } = await (supabase
           .from("surveys" as never)
           .select("*")
-          .eq("id" as never, gs.welcome_survey_id)
+          .eq("id" as never, activeSurveyId)
           .single() as unknown as Promise<{
             data: { id: string; title: string; questions: string } | null
             error: unknown

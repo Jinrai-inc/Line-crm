@@ -41,8 +41,9 @@ export default function GreetingSettingsPage() {
   const [scheduleEnd, setScheduleEnd] = useState("")
   const [scheduleMessage, setScheduleMessage] = useState("")
 
-  // ウェルカムアンケート
+  // アンケート紐づけ
   const [welcomeSurveyId, setWelcomeSurveyId] = useState("")
+  const [scheduleSurveyId, setScheduleSurveyId] = useState("")
   const [surveys, setSurveys] = useState<{ id: string; title: string }[]>([])
 
   // フォローアップメッセージ（挨拶後に自動送信するテキスト）
@@ -66,6 +67,7 @@ export default function GreetingSettingsPage() {
             setScheduleEnd(json.settings.schedule_end ? json.settings.schedule_end.slice(0, 16) : "")
             setScheduleMessage(json.settings.schedule_message || "")
             setWelcomeSurveyId(json.settings.welcome_survey_id || "")
+            setScheduleSurveyId(json.settings.schedule_survey_id || "")
             setFollowUpMessages(json.settings.follow_up_messages || [])
           }
         }
@@ -99,6 +101,7 @@ export default function GreetingSettingsPage() {
           scheduleEnd: scheduleEnd ? new Date(scheduleEnd).toISOString() : null,
           scheduleMessage,
           welcomeSurveyId: welcomeSurveyId || null,
+          scheduleSurveyId: scheduleSurveyId || null,
           followUpMessages: followUpMessages.filter(m => m.trim()),
         }),
       })
@@ -208,6 +211,27 @@ export default function GreetingSettingsPage() {
                 <p className="text-xs text-gray-400">
                   空欄の場合はデフォルトのウェルカムメッセージが使用されます。
                 </p>
+
+                {/* 通常メッセージ後のアンケート */}
+                <div className="space-y-2 border-t pt-3 mt-3">
+                  <Label className="text-sm font-medium flex items-center gap-1">
+                    <ClipboardList size={14} />
+                    メッセージ後に送信するアンケート
+                  </Label>
+                  <select
+                    value={welcomeSurveyId}
+                    onChange={(e) => setWelcomeSurveyId(e.target.value)}
+                    className="w-full h-10 border rounded-md px-3 bg-white text-sm"
+                  >
+                    <option value="">なし（送信しない）</option>
+                    {surveys.map((s) => (
+                      <option key={s.id} value={s.id}>{s.title}</option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-gray-400">
+                    挨拶メッセージの直後にアンケートを自動送信します
+                  </p>
+                </div>
               </div>
             )}
           </CardContent>
@@ -295,6 +319,27 @@ export default function GreetingSettingsPage() {
                     rows={5}
                   />
                 </div>
+
+                {/* 期間指定メッセージ後のアンケート */}
+                <div className="space-y-2 border-t pt-3">
+                  <Label className="text-sm font-medium flex items-center gap-1">
+                    <ClipboardList size={14} />
+                    メッセージ後に送信するアンケート
+                  </Label>
+                  <select
+                    value={scheduleSurveyId}
+                    onChange={(e) => setScheduleSurveyId(e.target.value)}
+                    className="w-full h-10 border rounded-md px-3 bg-white text-sm"
+                  >
+                    <option value="">なし（送信しない）</option>
+                    {surveys.map((s) => (
+                      <option key={s.id} value={s.id}>{s.title}</option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-gray-400">
+                    期間指定メッセージの直後にアンケートを自動送信します
+                  </p>
+                </div>
               </div>
             )}
           </CardContent>
@@ -372,29 +417,6 @@ export default function GreetingSettingsPage() {
               </Button>
             </div>
 
-            {/* ウェルカムアンケート */}
-            <div className="space-y-2 border-t pt-4">
-              <Label className="text-sm font-medium flex items-center gap-1">
-                <ClipboardList size={14} />
-                自動送信アンケート
-              </Label>
-              <p className="text-xs text-gray-500">
-                追加メッセージの後にアンケートを自動送信します。
-              </p>
-              <select
-                value={welcomeSurveyId}
-                onChange={(e) => setWelcomeSurveyId(e.target.value)}
-                className="w-full h-10 border rounded-md px-3 bg-white text-sm"
-              >
-                <option value="">なし（送信しない）</option>
-                {surveys.map((s) => (
-                  <option key={s.id} value={s.id}>{s.title}</option>
-                ))}
-              </select>
-              <p className="text-xs text-gray-400">
-                アンケートは「アンケート」ページで事前に作成してください。
-              </p>
-            </div>
           </CardContent>
         </Card>
 

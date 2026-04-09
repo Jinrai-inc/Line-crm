@@ -57,5 +57,5 @@ export const commonNavItems: NavItem[] = [
   { label: "予約管理", href: "/coaching", icon: "CalendarClock" },
   { label: "売上・決済", href: "/payments", icon: "CreditCard" },
   { label: "設定", href: "/settings", icon: "Settings" },
-  { label: "ヘルプ", href: "/help", icon: "HelpCircle" },
+  { label: "マニュアル", href: "/help", icon: "HelpCircle" },
 ]

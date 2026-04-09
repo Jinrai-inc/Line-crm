@@ -40,6 +40,7 @@ export async function POST(request: NextRequest) {
       scheduleEnd,
       scheduleMessage,
       welcomeSurveyId,
+      scheduleSurveyId,
       followUpMessages,
     } = body
 
@@ -51,6 +52,7 @@ export async function POST(request: NextRequest) {
       schedule_end: scheduleEnd || null,
       schedule_message: scheduleMessage || null,
       welcome_survey_id: welcomeSurveyId || null,
+      schedule_survey_id: scheduleSurveyId || null,
       follow_up_messages: followUpMessages || [],
       updated_at: new Date().toISOString(),
     }
