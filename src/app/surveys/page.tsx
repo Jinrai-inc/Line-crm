@@ -42,6 +42,7 @@ import {
   CheckCircle,
   XCircle,
   BarChart3,
+  CalendarDays,
 } from "lucide-react"
 import Link from "next/link"
 
@@ -61,6 +62,7 @@ interface Choice {
   fileLink?: string
   autoReplyMessage?: string
   nextQuestionIndex?: number // -1 = アンケート終了, undefined = 次の質問へ
+  seminarIds?: string[]
 }
 
 interface Question {
@@ -79,7 +81,7 @@ interface SurveyData {
   updated_at: string
 }
 
-const emptyChoice: Choice = { text: "", tagName: "", rewardMessage: "", rewardUrl: "", file: null, fileLink: "", autoReplyMessage: "", nextQuestionIndex: undefined }
+const emptyChoice: Choice = { text: "", tagName: "", rewardMessage: "", rewardUrl: "", file: null, fileLink: "", autoReplyMessage: "", nextQuestionIndex: undefined, seminarIds: [] }
 
 export default function SurveysPage() {
   const accentColor = useAccentColor()
@@ -102,7 +104,7 @@ export default function SurveysPage() {
   const [sendTargetType, setSendTargetType] = useState("all")
   const [tags, setTags] = useState<{ id: string; name: string }[]>([])
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([])
-  const [seminars, setSeminars] = useState<{ id: string; title: string }[]>([])
+  const [seminars, setSeminars] = useState<{ id: string; title: string; status?: string }[]>([])
   const [selectedSeminarId, setSelectedSeminarId] = useState("")
 
   // Toast
@@ -162,6 +164,7 @@ export default function SurveysPage() {
         fileLink: c.fileLink || "",
         autoReplyMessage: c.autoReplyMessage || "",
         nextQuestionIndex: c.nextQuestionIndex,
+        seminarIds: c.seminarIds || [],
       })),
     }))
     setQuestions(parsed)
@@ -547,6 +550,50 @@ export default function SurveysPage() {
                             <span className="text-blue-500">{"{name}"}で相手の名前を自動挿入</span>
                           </p>
                         </div>
+
+                        {/* セミナー選択（自動返信後にセミナー申込導線を表示） */}
+                        {seminars.length > 0 && (
+                          <div className="space-y-1">
+                            <Label className="text-xs flex items-center gap-1">
+                              <CalendarDays className="h-3 w-3" />セミナー案内（申込導線）
+                            </Label>
+                            <div className="flex flex-wrap gap-1.5 p-2 border rounded-md min-h-[32px] bg-white">
+                              {seminars.filter(s => s.status === "open").map((s) => {
+                                const isSelected = (choice.seminarIds || []).includes(s.id)
+                                return (
+                                  <button
+                                    key={s.id}
+                                    type="button"
+                                    onClick={() => {
+                                      const currentIds = choice.seminarIds || []
+                                      const newIds = isSelected
+                                        ? currentIds.filter((id: string) => id !== s.id)
+                                        : [...currentIds, s.id]
+                                      setQuestions(questions.map((q, qi) =>
+                                        qi === qIdx ? {
+                                          ...q,
+                                          choices: q.choices.map((c, ci) =>
+                                            ci === cIdx ? { ...c, seminarIds: newIds } : c
+                                          )
+                                        } : q
+                                      ))
+                                    }}
+                                    className={`text-xs px-2 py-0.5 rounded-full border transition-colors ${
+                                      isSelected
+                                        ? "bg-green-100 border-green-300 text-green-800"
+                                        : "border-gray-200 text-gray-500 hover:bg-gray-50"
+                                    }`}
+                                  >
+                                    {s.title}
+                                  </button>
+                                )
+                              })}
+                            </div>
+                            <p className="text-xs text-gray-400">
+                              選択したセミナーの申込ボタンが自動返信後に送信されます
+                            </p>
+                          </div>
+                        )}
 
                         {/* 条件分岐（質問が2つ以上の場合のみ表示） */}
                         {questions.length > 1 && (

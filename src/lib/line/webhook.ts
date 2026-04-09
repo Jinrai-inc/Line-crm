@@ -814,6 +814,7 @@ async function handlePostback(
           file?: { url: string; fileName?: string; mimeType?: string } | null; fileLink?: string;
           autoReplyMessage?: string;
           nextQuestionIndex?: number;
+          seminarIds?: string[];
         }>
       }> = []
 
@@ -961,6 +962,45 @@ async function handlePostback(
             { accessToken: context.channelAccessToken }
           )
           replyUsed = true
+        }
+      }
+
+      // セミナー案内の送信（選択肢にセミナーが紐付いている場合）
+      if (choice.seminarIds && choice.seminarIds.length > 0) {
+        try {
+          const { data: selectedSeminars } = await supabase
+            .from("seminars")
+            .select("id, title, event_date, start_time, end_time, location, capacity")
+            .in("id", choice.seminarIds)
+            .eq("status", "open")
+
+          if (selectedSeminars && selectedSeminars.length > 0) {
+            const seminarInfos = await Promise.all(
+              selectedSeminars.map(async (s: { id: string; title: string; event_date: string; start_time: string | null; end_time: string | null; location: string | null; capacity: number }) => {
+                const { count } = await supabase
+                  .from("attendances")
+                  .select("*", { count: "exact", head: true })
+                  .eq("seminar_id", s.id)
+                  .neq("status", "cancelled")
+                return {
+                  id: s.id,
+                  title: s.title,
+                  eventDate: s.event_date,
+                  startTime: s.start_time?.slice(0, 5),
+                  endTime: s.end_time?.slice(0, 5),
+                  location: s.location || undefined,
+                  capacity: s.capacity,
+                  attendeeCount: count || 0,
+                }
+              })
+            )
+            const seminarMessage = createSeminarListMessage(seminarInfos)
+            await pushMessage(userId, [seminarMessage], {
+              accessToken: context.channelAccessToken,
+            })
+          }
+        } catch {
+          // セミナー案内送信失敗は無視
         }
       }
 

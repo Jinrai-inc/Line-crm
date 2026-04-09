@@ -61,6 +61,7 @@ import {
   Video,
   ClipboardList,
   File,
+  CalendarDays,
 } from "lucide-react"
 
 interface TagData {
@@ -148,6 +149,9 @@ export default function BroadcastsPage() {
   const [attachSurvey, setAttachSurvey] = useState(false)
   const [selectedSurveyId, setSelectedSurveyId] = useState("")
   const [surveys, setSurveys] = useState<(SurveyData & { seminarTitle: string })[]>([])
+  // セミナー案内（メッセージと併送オプション）
+  const [attachSeminar, setAttachSeminar] = useState(false)
+  const [selectedSeminarIds, setSelectedSeminarIds] = useState<string[]>([])
   const [previewCount, setPreviewCount] = useState<number | null>(null)
   const [previewing, setPreviewing] = useState(false)
   const [sending, setSending] = useState(false)
@@ -295,6 +299,19 @@ export default function BroadcastsPage() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+            targetType,
+            targetFilter: buildTargetFilter(),
+          }),
+        })
+      }
+
+      // セミナー案内も併送する場合
+      if (attachSeminar && selectedSeminarIds.length > 0) {
+        await fetch("/api/broadcasts/seminar", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            seminarIds: selectedSeminarIds,
             targetType,
             targetFilter: buildTargetFilter(),
           }),
@@ -651,6 +668,64 @@ export default function BroadcastsPage() {
                           </button>
                         )
                       })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* セミナー案内併送オプション */}
+              {seminars.length > 0 && (
+                <div className="rounded-lg border border-gray-200 p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <CalendarDays className="h-4 w-4" style={{ color: accentColor }} />
+                      <span className="text-sm font-medium">セミナー案内も一緒に送信</span>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={attachSeminar}
+                        onChange={(e) => {
+                          setAttachSeminar(e.target.checked)
+                          if (!e.target.checked) setSelectedSeminarIds([])
+                        }}
+                        className="sr-only peer"
+                      />
+                      <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-green-500" />
+                    </label>
+                  </div>
+
+                  {attachSeminar && (
+                    <div className="space-y-2 pt-2 border-t border-gray-100">
+                      <Label className="text-xs text-gray-500">送信するセミナーを選択（複数可）</Label>
+                      <div className="flex flex-wrap gap-2">
+                        {seminars.filter(s => (s as { status?: string }).status === "open" || !(s as { status?: string }).status).map((seminar) => {
+                          const isSelected = selectedSeminarIds.includes(seminar.id)
+                          return (
+                            <button
+                              key={seminar.id}
+                              type="button"
+                              onClick={() => {
+                                setSelectedSeminarIds(prev =>
+                                  isSelected
+                                    ? prev.filter(id => id !== seminar.id)
+                                    : [...prev, seminar.id]
+                                )
+                              }}
+                              className={`text-xs px-3 py-1.5 rounded-full border transition-colors ${
+                                isSelected
+                                  ? "bg-green-100 border-green-300 text-green-800"
+                                  : "border-gray-200 text-gray-600 hover:bg-gray-50"
+                              }`}
+                            >
+                              {seminar.title}
+                            </button>
+                          )
+                        })}
+                      </div>
+                      <p className="text-xs text-gray-400">
+                        選択したセミナーの申込ボタン付きカードが配信メッセージの後に送信されます
+                      </p>
                     </div>
                   )}
                 </div>
