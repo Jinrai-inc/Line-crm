@@ -43,6 +43,7 @@ import {
   XCircle,
   BarChart3,
   CalendarDays,
+  User,
 } from "lucide-react"
 import Link from "next/link"
 
@@ -537,18 +538,34 @@ export default function SurveysPage() {
 
                         {/* 自動返信メッセージ */}
                         <div className="space-y-1">
-                          <Label className="text-xs flex items-center gap-1">
-                            💬 自動返信メッセージ
-                          </Label>
+                          <div className="flex items-center justify-between">
+                            <Label className="text-xs flex items-center gap-1">
+                              💬 自動返信メッセージ
+                            </Label>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-5 text-[10px] px-1.5"
+                              onClick={() => {
+                                const el = document.querySelector(`#auto-reply-${qIdx}-${cIdx}`) as HTMLInputElement | null
+                                if (!el) return
+                                const s = el.selectionStart ?? 0, e = el.selectionEnd ?? 0
+                                const val = choice.autoReplyMessage || ""
+                                updateChoice(qIdx, cIdx, "autoReplyMessage", val.substring(0, s) + "{name}" + val.substring(e))
+                                setTimeout(() => { el.focus(); el.setSelectionRange(s + 6, s + 6) }, 0)
+                              }}
+                            >
+                              <User className="h-2.5 w-2.5 mr-0.5" />
+                              名前挿入
+                            </Button>
+                          </div>
                           <Input
+                            id={`auto-reply-${qIdx}-${cIdx}`}
                             value={choice.autoReplyMessage || ""}
                             onChange={(e) => updateChoice(qIdx, cIdx, "autoReplyMessage", e.target.value)}
                             placeholder="{name}さん、ご回答ありがとうございます！"
                             className="h-8"
                           />
-                          <p className="text-xs text-gray-400">
-                            <span className="text-blue-500">{"{name}"}で相手の名前を自動挿入</span>
-                          </p>
                         </div>
 
                         {/* セミナー選択（自動返信後にセミナー申込導線を表示） */}

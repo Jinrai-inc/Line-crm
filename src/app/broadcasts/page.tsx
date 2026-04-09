@@ -62,6 +62,7 @@ import {
   ClipboardList,
   File,
   CalendarDays,
+  User,
 } from "lucide-react"
 
 interface TagData {
@@ -435,10 +436,27 @@ export default function BroadcastsPage() {
               {messageType === "text" && (
                 <div className="space-y-4">
                   <div className="space-y-2">
-                    <Label htmlFor="broadcast-message">メッセージ本文</Label>
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="broadcast-message">メッセージ本文</Label>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-6 text-xs px-2"
+                        onClick={() => {
+                          const ta = document.querySelector("#broadcast-message") as HTMLTextAreaElement | null
+                          if (!ta) return
+                          const s = ta.selectionStart, e = ta.selectionEnd
+                          setMessageText(messageText.substring(0, s) + "{name}" + messageText.substring(e))
+                          setTimeout(() => { ta.focus(); ta.setSelectionRange(s + 6, s + 6) }, 0)
+                        }}
+                      >
+                        <User className="h-3 w-3 mr-1" />
+                        名前挿入
+                      </Button>
+                    </div>
                     <Textarea
                       id="broadcast-message"
-                      placeholder="配信するメッセージを入力してください..."
+                      placeholder="{name}さん、こんにちは！&#10;配信するメッセージを入力してください..."
                       rows={6}
                       value={messageText}
                       onChange={(e) => setMessageText(e.target.value)}

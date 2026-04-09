@@ -22,6 +22,7 @@ import {
   Plus,
   Trash2,
   Send,
+  User,
 } from "lucide-react"
 
 export default function GreetingSettingsPage() {
@@ -179,16 +180,33 @@ export default function GreetingSettingsPage() {
 
             {enabled && (
               <div className="space-y-2">
-                <Label>メッセージ本文</Label>
+                <div className="flex items-center justify-between">
+                  <Label>メッセージ本文</Label>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-6 text-xs px-2"
+                    onClick={() => {
+                      const ta = document.querySelector("#greeting-message") as HTMLTextAreaElement | null
+                      if (!ta) return
+                      const s = ta.selectionStart, e = ta.selectionEnd
+                      setMessage(message.substring(0, s) + "{name}" + message.substring(e))
+                      setTimeout(() => { ta.focus(); ta.setSelectionRange(s + 6, s + 6) }, 0)
+                    }}
+                  >
+                    <User className="h-3 w-3 mr-1" />
+                    名前挿入
+                  </Button>
+                </div>
                 <Textarea
+                  id="greeting-message"
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
-                  placeholder="友だち追加ありがとうございます！&#10;セミナー情報やお得な情報をお届けします。"
+                  placeholder="{name}さん、友だち追加ありがとうございます！&#10;セミナー情報やお得な情報をお届けします。"
                   rows={5}
                 />
                 <p className="text-xs text-gray-400">
                   空欄の場合はデフォルトのウェルカムメッセージが使用されます。
-                  <span className="text-blue-500 ml-1">{"{name}"}と入力すると相手の名前が自動挿入されます。</span>
                 </p>
               </div>
             )}
@@ -251,16 +269,31 @@ export default function GreetingSettingsPage() {
                 )}
 
                 <div className="space-y-2">
-                  <Label>期間中のメッセージ本文</Label>
+                  <div className="flex items-center justify-between">
+                    <Label>期間中のメッセージ本文</Label>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-6 text-xs px-2"
+                      onClick={() => {
+                        const ta = document.querySelector("#schedule-message") as HTMLTextAreaElement | null
+                        if (!ta) return
+                        const s = ta.selectionStart, e = ta.selectionEnd
+                        setScheduleMessage(scheduleMessage.substring(0, s) + "{name}" + scheduleMessage.substring(e))
+                        setTimeout(() => { ta.focus(); ta.setSelectionRange(s + 6, s + 6) }, 0)
+                      }}
+                    >
+                      <User className="h-3 w-3 mr-1" />
+                      名前挿入
+                    </Button>
+                  </div>
                   <Textarea
+                    id="schedule-message"
                     value={scheduleMessage}
                     onChange={(e) => setScheduleMessage(e.target.value)}
                     placeholder="{name}さま&#10;友だち追加ありがとうございます！&#10;現在キャンペーン実施中です！"
                     rows={5}
                   />
-                  <p className="text-xs text-gray-400">
-                    <span className="text-blue-500">{"{name}"}と入力すると相手の名前が自動挿入されます。</span>
-                  </p>
                 </div>
               </div>
             )}
@@ -289,6 +322,23 @@ export default function GreetingSettingsPage() {
                     <div className="flex items-center gap-2">
                       <Badge variant="secondary" className="text-xs">メッセージ {idx + 1}</Badge>
                       <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-5 text-[10px] px-1.5"
+                        onClick={() => {
+                          const ta = document.querySelector(`#followup-msg-${idx}`) as HTMLTextAreaElement | null
+                          if (!ta) return
+                          const s = ta.selectionStart, e = ta.selectionEnd
+                          const updated = [...followUpMessages]
+                          updated[idx] = msg.substring(0, s) + "{name}" + msg.substring(e)
+                          setFollowUpMessages(updated)
+                          setTimeout(() => { ta.focus(); ta.setSelectionRange(s + 6, s + 6) }, 0)
+                        }}
+                      >
+                        <User className="h-2.5 w-2.5 mr-0.5" />
+                        名前挿入
+                      </Button>
+                      <Button
                         variant="ghost"
                         size="sm"
                         className="h-6 px-1 text-red-400 hover:text-red-600"
@@ -298,13 +348,14 @@ export default function GreetingSettingsPage() {
                       </Button>
                     </div>
                     <Textarea
+                      id={`followup-msg-${idx}`}
                       value={msg}
                       onChange={(e) => {
                         const updated = [...followUpMessages]
                         updated[idx] = e.target.value
                         setFollowUpMessages(updated)
                       }}
-                      placeholder="送信するメッセージを入力..."
+                      placeholder="{name}さん、送信するメッセージを入力..."
                       rows={3}
                     />
                   </div>

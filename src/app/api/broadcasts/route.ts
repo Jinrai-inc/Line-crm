@@ -3,6 +3,17 @@ import { getAuthenticatedOrgId } from "@/lib/api/auth"
 import { pushMessage, multicast, broadcast } from "@/lib/line/client"
 import { createFileDeliveryMessage } from "@/lib/line/flex-templates"
 
+function replaceNameTag(text: string, displayName: string): string {
+  return text.replace(/\{name\}/g, displayName).replace(/\{名前\}/g, displayName)
+}
+
+function messageContainsNameTag(messages: unknown[]): boolean {
+  return messages.some((m) => {
+    const msg = m as { type?: string; text?: string }
+    return msg.type === "text" && msg.text && (/\{name\}/.test(msg.text) || /\{名前\}/.test(msg.text))
+  })
+}
+
 export const maxDuration = 300
 
 // 配信履歴一覧
@@ -120,10 +131,64 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: "送信するメッセージがありません" }, { status: 400 })
       }
 
-      if (targetType === "all") {
-        // 全員配信
+      const hasNameTag = messageContainsNameTag(messages)
+
+      if (hasNameTag) {
+        // {name}タグがある場合は個別送信でパーソナライズ
+        let friendQuery = supabase
+          .from("friends")
+          .select("line_user_id, display_name, custom_name")
+          .eq("organization_id", orgId)
+          .eq("status", "active")
+
+        if (targetType === "tag" && targetFilter?.tagIds) {
+          const { data: taggedFriends } = await supabase
+            .from("friend_tags")
+            .select("friend_id")
+            .in("tag_id", targetFilter.tagIds)
+          if (taggedFriends && taggedFriends.length > 0) {
+            const friendIds = taggedFriends.map((ft: { friend_id: string | null }) => ft.friend_id).filter((id): id is string => id !== null)
+            friendQuery = friendQuery.in("id", friendIds)
+          }
+        } else if (targetType === "seminar" && targetFilter?.seminarId) {
+          const { data: attendances } = await supabase
+            .from("attendances")
+            .select("friend_id")
+            .eq("seminar_id", targetFilter.seminarId)
+            .neq("status", "cancelled")
+          if (attendances && attendances.length > 0) {
+            const friendIds = attendances.map((a: { friend_id: string | null }) => a.friend_id).filter((id): id is string => id !== null)
+            friendQuery = friendQuery.in("id", friendIds)
+          } else {
+            friendQuery = friendQuery.eq("id", "00000000-0000-0000-0000-000000000000")
+          }
+        }
+
+        const { data: targetFriends } = await friendQuery
+        if (targetFriends && targetFriends.length > 0) {
+          // 10件ずつ並列で個別送信
+          for (let i = 0; i < targetFriends.length; i += 10) {
+            const batch = targetFriends.slice(i, i + 10)
+            const results = await Promise.allSettled(
+              batch.map((f: { line_user_id: string; display_name?: string; custom_name?: string }) => {
+                const name = f.custom_name || f.display_name || "お客様"
+                const personalizedMessages = messages.map((m) => {
+                  const msg = m as { type?: string; text?: string }
+                  if (msg.type === "text" && msg.text) {
+                    return { ...msg, text: replaceNameTag(msg.text, name) }
+                  }
+                  return m
+                })
+                return pushMessage(f.line_user_id, personalizedMessages, { accessToken: lineAccount.channel_access_token })
+              })
+            )
+            sentCount += results.filter(r => r.status === "fulfilled").length
+            failedCount += results.filter(r => r.status === "rejected").length
+          }
+        }
+      } else if (targetType === "all") {
+        // 全員配信（名前タグなし）
         await broadcast(messages, { accessToken: lineAccount.channel_access_token })
-        // 概算数を取得
         const { count } = await supabase
           .from("friends")
           .select("*", { count: "exact", head: true })
@@ -131,7 +196,7 @@ export async function POST(request: NextRequest) {
           .eq("status", "active")
         sentCount = count || 0
       } else {
-        // ターゲット配信（タグ等）
+        // ターゲット配信（名前タグなし）
         let friendQuery = supabase
           .from("friends")
           .select("line_user_id")
@@ -149,7 +214,6 @@ export async function POST(request: NextRequest) {
             friendQuery = friendQuery.in("id", friendIds)
           }
         } else if (targetType === "seminar" && targetFilter?.seminarId) {
-          // セミナー参加者に絞り込み
           const { data: attendances } = await supabase
             .from("attendances")
             .select("friend_id")
@@ -160,7 +224,6 @@ export async function POST(request: NextRequest) {
             const friendIds = attendances.map((a: { friend_id: string | null }) => a.friend_id).filter((id): id is string => id !== null)
             friendQuery = friendQuery.in("id", friendIds)
           } else {
-            // 参加者なし
             friendQuery = friendQuery.eq("id", "00000000-0000-0000-0000-000000000000")
           }
         }

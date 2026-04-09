@@ -288,6 +288,56 @@ async function handleFollow(
     }
   }
 
+  // ステップ配信キューの登録
+  try {
+    const { data: stepSettings } = await (supabase
+      .from("step_message_settings" as never)
+      .select("*")
+      .eq("organization_id" as never, context.organizationId)
+      .single() as unknown as Promise<{
+        data: {
+          enabled: boolean
+          steps: Array<{ delay_days: number; delay_hours: number; message: string; enabled: boolean }>
+        } | null
+        error: unknown
+      }>)
+
+    if (stepSettings?.enabled && stepSettings.steps?.length > 0) {
+      const { data: friendForStep } = await supabase
+        .from("friends")
+        .select("id")
+        .eq("organization_id", context.organizationId)
+        .eq("line_user_id", userId)
+        .single()
+
+      if (friendForStep) {
+        const now = new Date()
+        const queueItems = stepSettings.steps
+          .filter(s => s.enabled && s.message.trim())
+          .map((step, idx) => {
+            const scheduledAt = new Date(now.getTime() + (step.delay_days * 24 + step.delay_hours) * 60 * 60 * 1000)
+            return {
+              organization_id: context.organizationId,
+              friend_id: friendForStep.id,
+              line_user_id: userId,
+              step_index: idx,
+              message: step.message,
+              scheduled_at: scheduledAt.toISOString(),
+              status: "pending",
+            }
+          })
+
+        if (queueItems.length > 0) {
+          await (supabase
+            .from("step_message_queue" as never)
+            .insert(queueItems as never) as unknown as Promise<{ error: unknown }>)
+        }
+      }
+    }
+  } catch {
+    // ステップ配信キュー登録失敗は無視
+  }
+
   // メッセージログ記録
   await supabase.from("message_logs").insert({
     organization_id: context.organizationId,
