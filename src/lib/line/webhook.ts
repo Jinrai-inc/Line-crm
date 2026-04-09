@@ -1,7 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/server"
 import { getProfile, replyMessage, pushMessage } from "./client"
 import { createWelcomeMessage } from "./messages"
-import { createSeminarListMessage, createApplyConfirmMessage, createFollowupResponseMessage, createSurveyRewardMessage, createSingleQuestionMessage } from "./flex-templates"
+import { createSeminarListMessage, createApplyConfirmMessage, createFollowupResponseMessage, createSurveyRewardMessage, createSingleQuestionMessage, createPaymentMessage } from "./flex-templates"
 
 // メッセージタグ置換（{name} → ユーザー名）
 function replaceMessageTags(text: string, displayName: string): string {
@@ -741,6 +741,20 @@ async function handlePostback(
           [confirmMsg],
           { accessToken: context.channelAccessToken }
         )
+      }
+
+      // 決済リンクの自動送信
+      const paymentUrl = (seminar as Record<string, unknown>).payment_url as string | null
+      if (paymentUrl) {
+        try {
+          await pushMessage(
+            userId,
+            [createPaymentMessage(seminar.title, paymentUrl)],
+            { accessToken: context.channelAccessToken }
+          )
+        } catch {
+          // 決済リンク送信失敗は無視
+        }
       }
       break
     }

@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { ArrowLeft, Loader2, Tag } from "lucide-react"
+import { ArrowLeft, Loader2, Tag, CreditCard } from "lucide-react"
 
 interface FormErrors {
   title?: string
@@ -30,6 +30,7 @@ export default function SeminarNewPage() {
     venue: "",
     capacity: 20,
     tagIds: [] as string[],
+    paymentUrl: "",
   })
   const [allTags, setAllTags] = useState<{ id: string; name: string }[]>([])
 
@@ -63,6 +64,7 @@ export default function SeminarNewPage() {
           location: form.venue,
           capacity: form.capacity,
           tag_ids: form.tagIds,
+          paymentUrl: form.paymentUrl || null,
         }),
       })
       if (res.ok) {
@@ -182,6 +184,23 @@ export default function SeminarNewPage() {
                     }
                   />
                 </div>
+              </div>
+
+              {/* 決済リンク */}
+              <div>
+                <Label htmlFor="paymentUrl" className="flex items-center gap-1">
+                  <CreditCard className="h-3.5 w-3.5" />
+                  決済リンクURL
+                </Label>
+                <Input
+                  id="paymentUrl"
+                  value={form.paymentUrl}
+                  onChange={(e) => setForm({ ...form, paymentUrl: e.target.value })}
+                  placeholder="https://... （申込後に自動送信されます）"
+                />
+                <p className="text-xs text-gray-400 mt-1">
+                  設定すると、セミナー申込後に決済リンクが自動送信されます
+                </p>
               </div>
 
               {/* タグ設定 */}

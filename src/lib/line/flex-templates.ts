@@ -874,3 +874,60 @@ export function createFileDeliveryMessage(
     },
   })
 }
+
+// 決済リンクメッセージ
+export function createPaymentMessage(seminarTitle: string, paymentUrl: string) {
+  return flexMessage("お支払いのご案内", {
+    type: "bubble",
+    body: {
+      type: "box",
+      layout: "vertical",
+      contents: [
+        {
+          type: "text",
+          text: "💳 お支払いのご案内",
+          weight: "bold",
+          size: "lg",
+          color: "#6366F1",
+        },
+        {
+          type: "separator",
+          margin: "lg",
+        },
+        {
+          type: "text",
+          text: seminarTitle,
+          weight: "bold",
+          size: "md",
+          margin: "lg",
+          wrap: true,
+        },
+        {
+          type: "text",
+          text: "お申込みありがとうございます。\n下のボタンからお支払い手続きをお願いいたします。",
+          size: "sm",
+          color: "#666666",
+          margin: "md",
+          wrap: true,
+        },
+      ],
+    },
+    footer: {
+      type: "box",
+      layout: "vertical",
+      spacing: "sm",
+      contents: [
+        {
+          type: "button",
+          style: "primary",
+          color: "#6366F1",
+          action: {
+            type: "uri",
+            label: "お支払いはこちら",
+            uri: paymentUrl,
+          },
+        },
+      ],
+    },
+  })
+}

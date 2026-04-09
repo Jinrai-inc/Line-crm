@@ -48,6 +48,7 @@ import {
   Trash2,
   Tag,
   ClipboardList,
+  CreditCard,
 } from "lucide-react"
 
 interface Tag {
@@ -85,6 +86,7 @@ interface Seminar {
   attendee_count: number
   attendees: Attendee[]
   tag_ids?: string[]
+  payment_url?: string | null
 }
 
 const statusLabels: Record<string, string> = {
@@ -153,6 +155,7 @@ export default function SeminarDetailPage() {
     venue: "",
     capacity: 0,
     tag_ids: [] as string[],
+    payment_url: "",
   })
   const [allTags, setAllTags] = useState<Tag[]>([])
 
@@ -225,6 +228,7 @@ export default function SeminarDetailPage() {
       venue: seminar.location || "",
       capacity: seminar.capacity,
       tag_ids: seminar.tag_ids || [],
+      payment_url: seminar.payment_url || "",
     })
     setEditOpen(true)
   }
@@ -244,6 +248,7 @@ export default function SeminarDetailPage() {
           location: editForm.venue,
           capacity: editForm.capacity,
           tag_ids: editForm.tag_ids,
+          paymentUrl: editForm.payment_url,
         }),
       })
       if (res.ok) {
@@ -882,6 +887,23 @@ export default function SeminarDetailPage() {
                   <span className="text-xs text-gray-400 py-1">タグがありません</span>
                 )}
               </div>
+            </div>
+
+            {/* 決済リンク */}
+            <div>
+              <Label htmlFor="edit-payment-url" className="flex items-center gap-1">
+                <CreditCard className="h-3.5 w-3.5" />
+                決済リンクURL
+              </Label>
+              <Input
+                id="edit-payment-url"
+                value={editForm.payment_url}
+                onChange={(e) => setEditForm({ ...editForm, payment_url: e.target.value })}
+                placeholder="https://... （申込後に自動送信されます）"
+              />
+              <p className="text-xs text-gray-400 mt-1">
+                設定すると、セミナー申込後に決済リンクが自動送信されます
+              </p>
             </div>
           </div>
           <DialogFooter>
