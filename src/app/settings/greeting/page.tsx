@@ -188,6 +188,7 @@ export default function GreetingSettingsPage() {
                 />
                 <p className="text-xs text-gray-400">
                   空欄の場合はデフォルトのウェルカムメッセージが使用されます。
+                  <span className="text-blue-500 ml-1">{"{name}"}と入力すると相手の名前が自動挿入されます。</span>
                 </p>
               </div>
             )}
@@ -254,9 +255,12 @@ export default function GreetingSettingsPage() {
                   <Textarea
                     value={scheduleMessage}
                     onChange={(e) => setScheduleMessage(e.target.value)}
-                    placeholder="友だち追加ありがとうございます！&#10;現在キャンペーン実施中です！&#10;詳しくはこちらをご確認ください。"
+                    placeholder="{name}さま&#10;友だち追加ありがとうございます！&#10;現在キャンペーン実施中です！"
                     rows={5}
                   />
+                  <p className="text-xs text-gray-400">
+                    <span className="text-blue-500">{"{name}"}と入力すると相手の名前が自動挿入されます。</span>
+                  </p>
                 </div>
               </div>
             )}

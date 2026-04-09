@@ -540,9 +540,12 @@ export default function SurveysPage() {
                           <Input
                             value={choice.autoReplyMessage || ""}
                             onChange={(e) => updateChoice(qIdx, cIdx, "autoReplyMessage", e.target.value)}
-                            placeholder="この選択肢が選ばれた時に返信するメッセージ（任意）"
+                            placeholder="{name}さん、ご回答ありがとうございます！"
                             className="h-8"
                           />
+                          <p className="text-xs text-gray-400">
+                            <span className="text-blue-500">{"{name}"}で相手の名前を自動挿入</span>
+                          </p>
                         </div>
 
                         {/* 条件分岐（質問が2つ以上の場合のみ表示） */}

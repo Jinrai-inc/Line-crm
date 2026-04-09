@@ -3,6 +3,11 @@ import { getProfile, replyMessage, pushMessage } from "./client"
 import { createWelcomeMessage, createDefaultReply } from "./messages"
 import { createSeminarListMessage, createApplyConfirmMessage, createFollowupResponseMessage, createSurveyRewardMessage, createSingleQuestionMessage } from "./flex-templates"
 
+// メッセージタグ置換（{name} → ユーザー名）
+function replaceMessageTags(text: string, displayName: string): string {
+  return text.replace(/\{name\}/g, displayName).replace(/\{名前\}/g, displayName)
+}
+
 // Webhookイベントの簡易型（LINEから受信するrawデータ）
 interface WebhookEvent {
   type: string
@@ -219,7 +224,7 @@ async function handleFollow(
       if (customMessage) {
         await replyMessage(
           event.replyToken,
-          [{ type: "text", text: customMessage }],
+          [{ type: "text", text: replaceMessageTags(customMessage, profile.displayName) }],
           { accessToken: context.channelAccessToken }
         )
       } else {
@@ -236,7 +241,7 @@ async function handleFollow(
       for (const msg of gs.follow_up_messages) {
         if (msg.trim()) {
           try {
-            await pushMessage(userId, [{ type: "text", text: msg }], {
+            await pushMessage(userId, [{ type: "text", text: replaceMessageTags(msg, profile.displayName) }], {
               accessToken: context.channelAccessToken,
             })
           } catch {
@@ -752,10 +757,13 @@ async function handlePostback(
       // 友だちを取得してタグを付与
       const { data: friend } = await supabase
         .from("friends")
-        .select("id")
+        .select("id, display_name, custom_name")
         .eq("organization_id", context.organizationId)
         .eq("line_user_id", userId)
         .single()
+
+      const followupUserName = (friend as { custom_name?: string } | null)?.custom_name
+        || (friend as { display_name?: string } | null)?.display_name || "お客様"
 
       if (friend && tag) {
         await supabase.from("friend_tags").upsert(
@@ -772,7 +780,7 @@ async function handlePostback(
       if (event.replyToken) {
         await replyMessage(
           event.replyToken,
-          [createFollowupResponseMessage(button.responseMessage, button.responseUrl)],
+          [createFollowupResponseMessage(replaceMessageTags(button.responseMessage, followupUserName), button.responseUrl)],
           { accessToken: context.channelAccessToken }
         )
       }
@@ -843,10 +851,13 @@ async function handlePostback(
       // 友だちを取得
       const { data: surveyFriend } = await supabase
         .from("friends")
-        .select("id")
+        .select("id, display_name, custom_name")
         .eq("organization_id", context.organizationId)
         .eq("line_user_id", userId)
         .single()
+
+      const surveyUserName = (surveyFriend as { display_name?: string; custom_name?: string } | null)?.custom_name
+        || (surveyFriend as { display_name?: string } | null)?.display_name || "お客様"
 
       // タグの自動作成・付与
       if (choice.tagName && surveyFriend) {
@@ -914,7 +925,7 @@ async function handlePostback(
 
         // 選択肢ごとの自動返信メッセージ
         if (choice.autoReplyMessage) {
-          replyMessages.push({ type: "text", text: choice.autoReplyMessage })
+          replyMessages.push({ type: "text", text: replaceMessageTags(choice.autoReplyMessage, surveyUserName) })
         }
 
         // 添付ファイルがある場合は画像/PDFメッセージを送信
@@ -936,7 +947,10 @@ async function handlePostback(
 
         // 特典メッセージ or URL がある場合
         if (hasReward && (choice.rewardMessage || choice.rewardUrl)) {
-          const rewardMsg = choice.rewardMessage || "アンケートにご回答いただきありがとうございます！"
+          const rewardMsg = replaceMessageTags(
+            choice.rewardMessage || "アンケートにご回答いただきありがとうございます！",
+            surveyUserName
+          )
           replyMessages.push(createSurveyRewardMessage(rewardMsg, choice.rewardUrl))
         }
 
