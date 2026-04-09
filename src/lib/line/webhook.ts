@@ -186,6 +186,7 @@ async function handleFollow(
           schedule_enabled: boolean; schedule_start: string | null;
           schedule_end: string | null; schedule_message: string | null;
           welcome_survey_id: string | null;
+          follow_up_messages: string[] | null;
         } | null
         error: unknown
       }>)
@@ -227,6 +228,21 @@ async function handleFollow(
           [createWelcomeMessage(context.channelName)],
           { accessToken: context.channelAccessToken }
         )
+      }
+    }
+
+    // フォローアップメッセージの自動送信
+    if (gs?.follow_up_messages && gs.follow_up_messages.length > 0) {
+      for (const msg of gs.follow_up_messages) {
+        if (msg.trim()) {
+          try {
+            await pushMessage(userId, [{ type: "text", text: msg }], {
+              accessToken: context.channelAccessToken,
+            })
+          } catch {
+            // フォローアップメッセージ送信失敗は無視
+          }
+        }
       }
     }
 

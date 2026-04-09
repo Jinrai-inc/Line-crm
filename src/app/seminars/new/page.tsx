@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { AppLayout } from "@/components/layout/app-layout"
 import { PageHeader } from "@/components/layout/page-header"
@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { ArrowLeft, Loader2 } from "lucide-react"
+import { ArrowLeft, Loader2, Tag } from "lucide-react"
 
 interface FormErrors {
   title?: string
@@ -29,7 +29,13 @@ export default function SeminarNewPage() {
     endTime: "",
     venue: "",
     capacity: 20,
+    tagIds: [] as string[],
   })
+  const [allTags, setAllTags] = useState<{ id: string; name: string }[]>([])
+
+  useEffect(() => {
+    fetch("/api/tags").then(r => r.json()).then(j => setAllTags(j.data ?? [])).catch(() => {})
+  }, [])
 
   function validate(): boolean {
     const newErrors: FormErrors = {}
@@ -56,6 +62,7 @@ export default function SeminarNewPage() {
           endTime: form.endTime,
           location: form.venue,
           capacity: form.capacity,
+          tag_ids: form.tagIds,
         }),
       })
       if (res.ok) {
@@ -174,6 +181,43 @@ export default function SeminarNewPage() {
                       setForm({ ...form, capacity: parseInt(e.target.value) || 1 })
                     }
                   />
+                </div>
+              </div>
+
+              {/* タグ設定 */}
+              <div>
+                <Label className="flex items-center gap-1 mb-1.5">
+                  <Tag className="h-3.5 w-3.5" />
+                  タグ
+                </Label>
+                <div className="flex flex-wrap gap-2 p-2 border rounded-md min-h-[40px] bg-white">
+                  {allTags.map((tag) => {
+                    const isSelected = form.tagIds.includes(tag.id)
+                    return (
+                      <button
+                        key={tag.id}
+                        type="button"
+                        onClick={() => {
+                          setForm({
+                            ...form,
+                            tagIds: isSelected
+                              ? form.tagIds.filter((id) => id !== tag.id)
+                              : [...form.tagIds, tag.id],
+                          })
+                        }}
+                        className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
+                          isSelected
+                            ? "bg-blue-100 border-blue-300 text-blue-800"
+                            : "border-gray-200 text-gray-600 hover:bg-gray-50"
+                        }`}
+                      >
+                        {tag.name}
+                      </button>
+                    )
+                  })}
+                  {allTags.length === 0 && (
+                    <span className="text-xs text-gray-400 py-1">タグがありません</span>
+                  )}
                 </div>
               </div>
 

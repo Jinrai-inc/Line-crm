@@ -40,6 +40,7 @@ export async function POST(request: NextRequest) {
       scheduleEnd,
       scheduleMessage,
       welcomeSurveyId,
+      followUpMessages,
     } = body
 
     const settingsData: Record<string, unknown> = {
@@ -50,6 +51,7 @@ export async function POST(request: NextRequest) {
       schedule_end: scheduleEnd || null,
       schedule_message: scheduleMessage || null,
       welcome_survey_id: welcomeSurveyId || null,
+      follow_up_messages: followUpMessages || [],
       updated_at: new Date().toISOString(),
     }
 

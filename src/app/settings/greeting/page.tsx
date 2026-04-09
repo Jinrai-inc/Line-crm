@@ -19,6 +19,9 @@ import {
   CalendarClock,
   Eye,
   ClipboardList,
+  Plus,
+  Trash2,
+  Send,
 } from "lucide-react"
 
 export default function GreetingSettingsPage() {
@@ -41,6 +44,9 @@ export default function GreetingSettingsPage() {
   const [welcomeSurveyId, setWelcomeSurveyId] = useState("")
   const [surveys, setSurveys] = useState<{ id: string; title: string }[]>([])
 
+  // フォローアップメッセージ（挨拶後に自動送信するテキスト）
+  const [followUpMessages, setFollowUpMessages] = useState<string[]>([])
+
   useEffect(() => {
     fetch("/api/surveys").then(r => r.json()).then(j => setSurveys(j.data ?? [])).catch(() => {})
   }, [])
@@ -59,6 +65,7 @@ export default function GreetingSettingsPage() {
             setScheduleEnd(json.settings.schedule_end ? json.settings.schedule_end.slice(0, 16) : "")
             setScheduleMessage(json.settings.schedule_message || "")
             setWelcomeSurveyId(json.settings.welcome_survey_id || "")
+            setFollowUpMessages(json.settings.follow_up_messages || [])
           }
         }
       } catch {
@@ -91,6 +98,7 @@ export default function GreetingSettingsPage() {
           scheduleEnd: scheduleEnd ? new Date(scheduleEnd).toISOString() : null,
           scheduleMessage,
           welcomeSurveyId: welcomeSurveyId || null,
+          followUpMessages: followUpMessages.filter(m => m.trim()),
         }),
       })
       if (res.ok) {
@@ -255,21 +263,69 @@ export default function GreetingSettingsPage() {
           </CardContent>
         </Card>
 
-        {/* ウェルカムアンケート */}
+        {/* フォローアップ自動配信 */}
         <Card>
           <CardContent className="p-6 space-y-4">
             <div className="flex items-center gap-2">
-              <ClipboardList size={20} style={{ color: accentColor }} />
-              <h2 className="text-base font-semibold">ウェルカムアンケート</h2>
+              <Send size={20} style={{ color: accentColor }} />
+              <h2 className="text-base font-semibold">フォローアップ自動配信</h2>
             </div>
 
             <p className="text-sm text-gray-500">
-              友だち追加後、挨拶メッセージの直後にアンケートを自動送信します。
-              属性調査やフォローアップに活用できます。
+              挨拶メッセージの後に、追加のメッセージやアンケートを自動送信します。
+              上から順番に送信されます。
             </p>
 
-            <div className="space-y-2">
-              <Label>送信するアンケート</Label>
+            {/* フォローアップテキストメッセージ */}
+            <div className="space-y-3">
+              <Label className="text-sm font-medium">追加メッセージ</Label>
+              {followUpMessages.map((msg, idx) => (
+                <div key={idx} className="flex gap-2">
+                  <div className="flex-1 space-y-1">
+                    <div className="flex items-center gap-2">
+                      <Badge variant="secondary" className="text-xs">メッセージ {idx + 1}</Badge>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 px-1 text-red-400 hover:text-red-600"
+                        onClick={() => setFollowUpMessages(followUpMessages.filter((_, i) => i !== idx))}
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </div>
+                    <Textarea
+                      value={msg}
+                      onChange={(e) => {
+                        const updated = [...followUpMessages]
+                        updated[idx] = e.target.value
+                        setFollowUpMessages(updated)
+                      }}
+                      placeholder="送信するメッセージを入力..."
+                      rows={3}
+                    />
+                  </div>
+                </div>
+              ))}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setFollowUpMessages([...followUpMessages, ""])}
+                className="w-full"
+              >
+                <Plus className="h-3.5 w-3.5 mr-1" />
+                メッセージを追加
+              </Button>
+            </div>
+
+            {/* ウェルカムアンケート */}
+            <div className="space-y-2 border-t pt-4">
+              <Label className="text-sm font-medium flex items-center gap-1">
+                <ClipboardList size={14} />
+                自動送信アンケート
+              </Label>
+              <p className="text-xs text-gray-500">
+                追加メッセージの後にアンケートを自動送信します。
+              </p>
               <select
                 value={welcomeSurveyId}
                 onChange={(e) => setWelcomeSurveyId(e.target.value)}

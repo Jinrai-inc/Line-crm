@@ -84,6 +84,7 @@ interface Seminar {
   status: "open" | "closed" | "cancelled"
   attendee_count: number
   attendees: Attendee[]
+  tag_ids?: string[]
 }
 
 const statusLabels: Record<string, string> = {
@@ -151,7 +152,9 @@ export default function SeminarDetailPage() {
     end_time: "",
     venue: "",
     capacity: 0,
+    tag_ids: [] as string[],
   })
+  const [allTags, setAllTags] = useState<Tag[]>([])
 
   const fetchSeminar = useCallback(async () => {
     try {
@@ -221,6 +224,7 @@ export default function SeminarDetailPage() {
       end_time: seminar.end_time || "",
       venue: seminar.location || "",
       capacity: seminar.capacity,
+      tag_ids: seminar.tag_ids || [],
     })
     setEditOpen(true)
   }
@@ -239,6 +243,7 @@ export default function SeminarDetailPage() {
           endTime: editForm.end_time,
           location: editForm.venue,
           capacity: editForm.capacity,
+          tag_ids: editForm.tag_ids,
         }),
       })
       if (res.ok) {
@@ -318,11 +323,17 @@ export default function SeminarDetailPage() {
     try {
       const res = await fetch("/api/tags")
       const json = await res.json()
-      setTags(json.data ?? [])
+      const tagList = json.data ?? []
+      setTags(tagList)
+      setAllTags(tagList)
     } catch {
       console.error("タグ取得に失敗しました")
     }
   }
+
+  useEffect(() => {
+    fetchTags()
+  }, [])
 
   async function searchInviteFriends(query: string) {
     setInviteSearch(query)
@@ -833,6 +844,43 @@ export default function SeminarDetailPage() {
                     setEditForm({ ...editForm, capacity: parseInt(e.target.value) || 0 })
                   }
                 />
+              </div>
+            </div>
+
+            {/* タグ設定 */}
+            <div>
+              <Label className="flex items-center gap-1 mb-1.5">
+                <Tag className="h-3.5 w-3.5" />
+                タグ
+              </Label>
+              <div className="flex flex-wrap gap-2 p-2 border rounded-md min-h-[40px] bg-white">
+                {allTags.map((tag) => {
+                  const isSelected = editForm.tag_ids.includes(tag.id)
+                  return (
+                    <button
+                      key={tag.id}
+                      type="button"
+                      onClick={() => {
+                        setEditForm({
+                          ...editForm,
+                          tag_ids: isSelected
+                            ? editForm.tag_ids.filter((id) => id !== tag.id)
+                            : [...editForm.tag_ids, tag.id],
+                        })
+                      }}
+                      className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
+                        isSelected
+                          ? "bg-blue-100 border-blue-300 text-blue-800"
+                          : "border-gray-200 text-gray-600 hover:bg-gray-50"
+                      }`}
+                    >
+                      {tag.name}
+                    </button>
+                  )
+                })}
+                {allTags.length === 0 && (
+                  <span className="text-xs text-gray-400 py-1">タグがありません</span>
+                )}
               </div>
             </div>
           </div>
