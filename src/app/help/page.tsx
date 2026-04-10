@@ -33,10 +33,54 @@ interface ManualSection {
   title: string
   icon: React.ReactNode
   color: string
+  isNew?: boolean
   items: { question: string; answer: string }[]
 }
 
 const manualSections: ManualSection[] = [
+  {
+    title: "最新機能",
+    icon: <Zap className="h-5 w-5" />,
+    color: "text-rose-600 bg-rose-100",
+    isNew: true,
+    items: [
+      {
+        question: "【NEW】決済完了後のZoomリンク自動送信",
+        answer:
+          "セミナーにZoomリンクと参加費を設定すると、決済完了後にZoomリンクが自動で届きます。\n\n■ 有料セミナーの流れ\n申込 → 決済案内送信 → お支払い完了 → Zoomリンク自動送信\n\n■ 無料セミナーの場合\n申込完了後にZoomリンクがすぐに届きます。\n\n設定方法：セミナー作成・編集画面 → 「参加費」「ZoomリンクURL」に入力",
+      },
+      {
+        question: "【NEW】セミナー申込後の決済リンク自動送信",
+        answer:
+          "セミナーに決済リンクURLまたは参加費を設定すると、申込後に決済案内が自動で送信されます。\n\n■ 参加費を設定した場合\nStripe Checkout Sessionが自動作成され、カード決済ページへのリンクが送信されます。\n\n■ 決済リンクURLを設定した場合\nWordPress等で作成した決済リンクがそのまま送信されます。\n\n設定方法：セミナー作成・編集画面 → 「決済リンクURL」または「参加費」に入力",
+      },
+      {
+        question: "【NEW】ステップ配信（時間差自動配信）",
+        answer:
+          "友だち追加後に、設定した時間差でメッセージを自動配信できます。\n\n例：\n・追加直後 → 挨拶メッセージ\n・1日後 → お礼メッセージ\n・3日後 → セミナーのご案内\n・7日後 → フォローアップ\n\n設定方法：設定 → ステップ配信",
+      },
+      {
+        question: "【NEW】挨拶メッセージへのアンケート紐づけ",
+        answer:
+          "挨拶メッセージ・期間指定メッセージの後にアンケートを自動送信できます。それぞれ別のアンケートを設定可能です。\n\n設定方法：設定 → 挨拶メッセージ → 各メッセージカード内「メッセージ後に送信するアンケート」",
+      },
+      {
+        question: "【NEW】名前自動挿入（{name}タグ）",
+        answer:
+          "メッセージに {name} と入れると、相手のLINE表示名に自動変換されます。\n\n例：「{name}さん、こんにちは！」→「田中太郎さん、こんにちは！」\n\n各入力欄の「名前挿入」ボタンからカーソル位置に挿入できます。\n\n使える場所：挨拶メッセージ、配信、アンケート自動返信、ステップ配信、フォローアップ",
+      },
+      {
+        question: "【NEW】アンケート条件分岐",
+        answer:
+          "回答内容に応じて次に表示する質問を変えられます。\n\n例：\n・「女性」→ グルコン体験会の質問へ\n・「男性」→ 個別相談会の質問へ\n・「参加しない」→ アンケート終了\n\n設定方法：アンケート編集画面 → 各選択肢の「次の質問（分岐）」",
+      },
+      {
+        question: "【NEW】アンケート回答後のセミナー申込導線",
+        answer:
+          "アンケートの各選択肢にセミナーを紐づけると、回答後にセミナーの申込ボタンが自動送信されます。\n\n設定方法：アンケート編集画面 → 各選択肢の「セミナー案内（申込導線）」でセミナーを選択",
+      },
+    ],
+  },
   {
     title: "はじめに（初期設定）",
     icon: <Settings className="h-5 w-5" />,
@@ -393,6 +437,9 @@ export default function HelpPage() {
                       {section.icon}
                     </span>
                     <span className="truncate">{section.title}</span>
+                    {section.isNew && (
+                      <span className="shrink-0 text-[10px] font-bold text-rose-500">NEW</span>
+                    )}
                   </a>
                 ))}
               </div>
@@ -412,6 +459,11 @@ export default function HelpPage() {
                 <Badge variant="secondary" className="text-xs">
                   {section.items.length}件
                 </Badge>
+                {section.isNew && (
+                  <Badge className="text-xs bg-rose-500 text-white border-transparent">
+                    NEW
+                  </Badge>
+                )}
               </div>
               <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
                 <Accordion type="single" collapsible>
