@@ -931,3 +931,60 @@ export function createPaymentMessage(seminarTitle: string, paymentUrl: string) {
     },
   })
 }
+
+// Zoomリンクメッセージ
+export function createZoomLinkMessage(seminarTitle: string, zoomUrl: string) {
+  return flexMessage("参加リンクのご案内", {
+    type: "bubble",
+    body: {
+      type: "box",
+      layout: "vertical",
+      contents: [
+        {
+          type: "text",
+          text: "🎥 参加リンクのご案内",
+          weight: "bold",
+          size: "lg",
+          color: "#2563EB",
+        },
+        {
+          type: "separator",
+          margin: "lg",
+        },
+        {
+          type: "text",
+          text: seminarTitle,
+          weight: "bold",
+          size: "md",
+          margin: "lg",
+          wrap: true,
+        },
+        {
+          type: "text",
+          text: "下のボタンからZoomミーティングにご参加ください。\n開始時間になりましたらタップしてご参加ください。",
+          size: "sm",
+          color: "#666666",
+          margin: "md",
+          wrap: true,
+        },
+      ],
+    },
+    footer: {
+      type: "box",
+      layout: "vertical",
+      spacing: "sm",
+      contents: [
+        {
+          type: "button",
+          style: "primary",
+          color: "#2563EB",
+          action: {
+            type: "uri",
+            label: "Zoomに参加する",
+            uri: zoomUrl,
+          },
+        },
+      ],
+    },
+  })
+}

@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { ArrowLeft, Loader2, Tag, CreditCard } from "lucide-react"
+import { ArrowLeft, Loader2, Tag, CreditCard, Video } from "lucide-react"
 
 interface FormErrors {
   title?: string
@@ -31,6 +31,8 @@ export default function SeminarNewPage() {
     capacity: 20,
     tagIds: [] as string[],
     paymentUrl: "",
+    zoomUrl: "",
+    price: 0,
   })
   const [allTags, setAllTags] = useState<{ id: string; name: string }[]>([])
 
@@ -65,6 +67,8 @@ export default function SeminarNewPage() {
           capacity: form.capacity,
           tag_ids: form.tagIds,
           paymentUrl: form.paymentUrl || null,
+          zoomUrl: form.zoomUrl || null,
+          price: form.price || null,
         }),
       })
       if (res.ok) {
@@ -186,21 +190,52 @@ export default function SeminarNewPage() {
                 </div>
               </div>
 
-              {/* 決済リンク */}
-              <div>
-                <Label htmlFor="paymentUrl" className="flex items-center gap-1">
-                  <CreditCard className="h-3.5 w-3.5" />
-                  決済リンクURL
-                </Label>
-                <Input
-                  id="paymentUrl"
-                  value={form.paymentUrl}
-                  onChange={(e) => setForm({ ...form, paymentUrl: e.target.value })}
-                  placeholder="https://... （申込後に自動送信されます）"
-                />
-                <p className="text-xs text-gray-400 mt-1">
-                  設定すると、セミナー申込後に決済リンクが自動送信されます
+              {/* 決済・Zoom設定 */}
+              <div className="space-y-4 border-t pt-4">
+                <h3 className="text-sm font-semibold flex items-center gap-1.5">
+                  <CreditCard className="h-4 w-4" />
+                  決済・参加リンク設定
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="price">参加費（円）</Label>
+                    <Input
+                      id="price"
+                      type="number"
+                      min={0}
+                      value={form.price || ""}
+                      onChange={(e) => setForm({ ...form, price: parseInt(e.target.value) || 0 })}
+                      placeholder="0（無料の場合は空欄）"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="paymentUrl">決済リンクURL</Label>
+                    <Input
+                      id="paymentUrl"
+                      value={form.paymentUrl}
+                      onChange={(e) => setForm({ ...form, paymentUrl: e.target.value })}
+                      placeholder="https://..."
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-gray-400">
+                  決済リンクを設定すると申込後に自動送信されます。金額を設定するとStripe決済セッションが自動作成されます。
                 </p>
+                <div>
+                  <Label htmlFor="zoomUrl" className="flex items-center gap-1">
+                    <Video className="h-3.5 w-3.5" />
+                    ZoomリンクURL
+                  </Label>
+                  <Input
+                    id="zoomUrl"
+                    value={form.zoomUrl}
+                    onChange={(e) => setForm({ ...form, zoomUrl: e.target.value })}
+                    placeholder="https://zoom.us/j/..."
+                  />
+                  <p className="text-xs text-gray-400 mt-1">
+                    決済完了後に自動送信されます。無料セミナーの場合は申込後に送信されます。
+                  </p>
+                </div>
               </div>
 
               {/* タグ設定 */}

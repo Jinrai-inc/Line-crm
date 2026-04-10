@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
 import { createStripeClient } from "@/lib/stripe/client"
 import { pushMessage } from "@/lib/line/client"
+import { createZoomLinkMessage } from "@/lib/line/flex-templates"
 import type Stripe from "stripe"
 
 // Stripe Webhookハンドラ
@@ -165,6 +166,80 @@ export async function POST(request: NextRequest) {
           } catch (autoMsgError) {
             console.error("Payment auto-message send error:", autoMsgError)
             // 自動メッセージ送信失敗は決済処理に影響させない
+          }
+        }
+
+        // セミナー決済完了 → Zoomリンク自動送信
+        const seminarId = session.metadata?.seminar_id
+        if (seminarId) {
+          try {
+            const { data: seminarRaw } = await supabase
+              .from("seminars")
+              .select("title, zoom_url")
+              .eq("id", seminarId)
+              .single()
+
+            const seminar = seminarRaw as { title: string; zoom_url?: string | null } | null
+            const zoomUrl = seminar?.zoom_url as string | null
+            if (seminar && zoomUrl) {
+              // 友だちのLINE IDを取得
+              const friendId = session.metadata?.friend_id
+              let lineUserId: string | null = null
+
+              if (friendId) {
+                const { data: f } = await supabase
+                  .from("friends")
+                  .select("line_user_id")
+                  .eq("id", friendId)
+                  .single()
+                lineUserId = f?.line_user_id || null
+              }
+
+              if (!lineUserId) {
+                // paymentsテーブルから取得
+                const { data: payment } = await supabase
+                  .from("payments")
+                  .select("friend_id")
+                  .eq("stripe_checkout_session_id", session.id)
+                  .single()
+                if (payment?.friend_id) {
+                  const { data: f } = await supabase
+                    .from("friends")
+                    .select("line_user_id")
+                    .eq("id", payment.friend_id)
+                    .single()
+                  lineUserId = f?.line_user_id || null
+                }
+              }
+
+              if (lineUserId) {
+                const { data: lineAccount } = await supabase
+                  .from("line_accounts")
+                  .select("channel_access_token")
+                  .eq("organization_id", matchedSettings.organization_id!)
+                  .single()
+
+                if (lineAccount?.channel_access_token) {
+                  await pushMessage(
+                    lineUserId,
+                    [createZoomLinkMessage(seminar.title, zoomUrl)],
+                    { accessToken: lineAccount.channel_access_token }
+                  )
+
+                  // 出席ステータスを「確認済み」に更新
+                  if (friendId) {
+                    await supabase
+                      .from("attendances")
+                      .update({ status: "confirmed" })
+                      .eq("friend_id", friendId)
+                      .eq("seminar_id", seminarId)
+                      .eq("status", "applied")
+                  }
+                }
+              }
+            }
+          } catch (zoomError) {
+            console.error("Zoom link send error:", zoomError)
           }
         }
         break

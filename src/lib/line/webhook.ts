@@ -1,7 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/server"
 import { getProfile, replyMessage, pushMessage } from "./client"
 import { createWelcomeMessage } from "./messages"
-import { createSeminarListMessage, createApplyConfirmMessage, createFollowupResponseMessage, createSurveyRewardMessage, createSingleQuestionMessage, createPaymentMessage } from "./flex-templates"
+import { createSeminarListMessage, createApplyConfirmMessage, createFollowupResponseMessage, createSurveyRewardMessage, createSingleQuestionMessage, createPaymentMessage, createZoomLinkMessage } from "./flex-templates"
 
 // メッセージタグ置換（{name} → ユーザー名）
 function replaceMessageTags(text: string, displayName: string): string {
@@ -743,18 +743,107 @@ async function handlePostback(
         )
       }
 
-      // 決済リンクの自動送信
-      const paymentUrl = (seminar as Record<string, unknown>).payment_url as string | null
-      if (paymentUrl) {
+      // 決済リンク or Zoomリンクの自動送信
+      const seminarExtra = seminar as Record<string, unknown>
+      const paymentUrl = seminarExtra.payment_url as string | null
+      const zoomUrl = seminarExtra.zoom_url as string | null
+      const seminarPrice = seminarExtra.price as number | null
+
+      if (seminarPrice && seminarPrice > 0) {
+        // 有料セミナー: Stripe Checkout Session を作成して決済リンクを送信
+        try {
+          const { data: stripeSettings } = await supabase
+            .from("stripe_settings")
+            .select("stripe_secret_key")
+            .eq("organization_id", context.organizationId)
+            .single()
+
+          if (stripeSettings?.stripe_secret_key) {
+            const { createStripeClient } = await import("@/lib/stripe/client")
+            const stripe = createStripeClient(stripeSettings.stripe_secret_key)
+            const origin = process.env.NEXT_PUBLIC_APP_URL || "https://example.com"
+
+            const session = await stripe.checkout.sessions.create({
+              payment_method_types: ["card"],
+              line_items: [{
+                price_data: {
+                  currency: "jpy",
+                  product_data: { name: seminar.title },
+                  unit_amount: seminarPrice,
+                },
+                quantity: 1,
+              }],
+              mode: "payment",
+              success_url: `${origin}/seminars/${seminar.id}?payment=success`,
+              cancel_url: `${origin}/seminars/${seminar.id}?payment=cancel`,
+              metadata: {
+                organization_id: context.organizationId,
+                friend_id: friend.id,
+                seminar_id: seminar.id,
+              },
+            })
+
+            // 支払いレコードを保存
+            await (supabase
+              .from("payments" as never)
+              .insert({
+                organization_id: context.organizationId,
+                stripe_checkout_session_id: session.id,
+                friend_id: friend.id,
+                seminar_id: seminar.id,
+                amount: seminarPrice,
+                currency: "jpy",
+                status: "pending",
+                payment_type: "checkout",
+                item_name: seminar.title,
+                metadata: { seminar_id: seminar.id },
+              } as never) as unknown as Promise<{ error: unknown }>)
+
+            if (session.url) {
+              await pushMessage(
+                userId,
+                [createPaymentMessage(seminar.title, session.url)],
+                { accessToken: context.channelAccessToken }
+              )
+            }
+          } else if (paymentUrl) {
+            // Stripe未設定だが静的URLがある場合
+            await pushMessage(
+              userId,
+              [createPaymentMessage(seminar.title, paymentUrl)],
+              { accessToken: context.channelAccessToken }
+            )
+          }
+        } catch {
+          // Stripe Checkout失敗時は静的URLにフォールバック
+          if (paymentUrl) {
+            try {
+              await pushMessage(
+                userId,
+                [createPaymentMessage(seminar.title, paymentUrl)],
+                { accessToken: context.channelAccessToken }
+              )
+            } catch { /* ignore */ }
+          }
+        }
+      } else if (paymentUrl) {
+        // 金額未設定だが静的決済URLがある場合
         try {
           await pushMessage(
             userId,
             [createPaymentMessage(seminar.title, paymentUrl)],
             { accessToken: context.channelAccessToken }
           )
-        } catch {
-          // 決済リンク送信失敗は無視
-        }
+        } catch { /* ignore */ }
+      } else if (zoomUrl) {
+        // 無料セミナー：Zoomリンクを即送信
+        try {
+          await pushMessage(
+            userId,
+            [createZoomLinkMessage(seminar.title, zoomUrl)],
+            { accessToken: context.channelAccessToken }
+          )
+        } catch { /* ignore */ }
       }
       break
     }

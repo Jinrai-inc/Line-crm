@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
     const { supabase, orgId } = auth
 
     const body = await request.json()
-    const { title, description, eventDate, startTime, endTime, location, locationUrl, capacity, status: seminarStatus, registrationDeadline, tag_ids, paymentUrl } = body
+    const { title, description, eventDate, startTime, endTime, location, locationUrl, capacity, status: seminarStatus, registrationDeadline, tag_ids, paymentUrl, zoomUrl, price } = body
 
     if (!title || !eventDate) {
       return NextResponse.json({ error: "セミナー名と開催日は必須です" }, { status: 400 })
@@ -73,6 +73,8 @@ export async function POST(request: NextRequest) {
         registration_deadline: registrationDeadline || null,
         tag_ids: tag_ids || [],
         payment_url: paymentUrl || null,
+        zoom_url: zoomUrl || null,
+        price: price || null,
       })
       .select()
       .single()
