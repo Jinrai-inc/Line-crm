@@ -953,41 +953,70 @@ export function createPaymentMessage(seminarTitle: string, paymentUrl: string) {
 }
 
 // Zoomリンクメッセージ
-export function createZoomLinkMessage(seminarTitle: string, zoomUrl: string) {
+export function createZoomLinkMessage(seminarTitle: string, zoomUrl: string, note?: string | null) {
+  const bodyContents: unknown[] = [
+    {
+      type: "text",
+      text: "🎥 参加リンクのご案内",
+      weight: "bold",
+      size: "lg",
+      color: "#2563EB",
+    },
+    {
+      type: "separator",
+      margin: "lg",
+    },
+    {
+      type: "text",
+      text: seminarTitle,
+      weight: "bold",
+      size: "md",
+      margin: "lg",
+      wrap: true,
+    },
+  ]
+
+  if (note) {
+    bodyContents.push({
+      type: "text",
+      text: note,
+      size: "sm",
+      color: "#333333",
+      margin: "md",
+      wrap: true,
+    })
+  } else {
+    bodyContents.push({
+      type: "text",
+      text: "下のボタンからZoomミーティングにご参加ください。\n開始時間になりましたらタップしてご参加ください。",
+      size: "sm",
+      color: "#666666",
+      margin: "md",
+      wrap: true,
+    })
+  }
+
+  // URLをテキストでも表示（コピー用）
+  bodyContents.push({
+    type: "text",
+    text: zoomUrl,
+    size: "xs",
+    color: "#2563EB",
+    margin: "md",
+    wrap: true,
+    action: {
+      type: "uri",
+      label: "URLを開く",
+      uri: zoomUrl,
+    },
+  })
+
   return flexMessage("参加リンクのご案内", {
     type: "bubble",
     body: {
       type: "box",
       layout: "vertical",
-      contents: [
-        {
-          type: "text",
-          text: "🎥 参加リンクのご案内",
-          weight: "bold",
-          size: "lg",
-          color: "#2563EB",
-        },
-        {
-          type: "separator",
-          margin: "lg",
-        },
-        {
-          type: "text",
-          text: seminarTitle,
-          weight: "bold",
-          size: "md",
-          margin: "lg",
-          wrap: true,
-        },
-        {
-          type: "text",
-          text: "下のボタンからZoomミーティングにご参加ください。\n開始時間になりましたらタップしてご参加ください。",
-          size: "sm",
-          color: "#666666",
-          margin: "md",
-          wrap: true,
-        },
-      ],
+      contents: bodyContents,
     },
     footer: {
       type: "box",

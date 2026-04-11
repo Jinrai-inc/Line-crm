@@ -747,6 +747,7 @@ async function handlePostback(
       const seminarExtra = seminar as Record<string, unknown>
       const paymentUrl = seminarExtra.payment_url as string | null
       const zoomUrl = seminarExtra.zoom_url as string | null
+      const zoomNote = seminarExtra.zoom_note as string | null
       const seminarPrice = seminarExtra.price as number | null
 
       if (seminarPrice && seminarPrice > 0) {
@@ -870,7 +871,7 @@ async function handlePostback(
         try {
           await pushMessage(
             userId,
-            [createZoomLinkMessage(seminar.title, zoomUrl)],
+            [createZoomLinkMessage(seminar.title, zoomUrl, zoomNote)],
             { accessToken: context.channelAccessToken }
           )
         } catch { /* ignore */ }

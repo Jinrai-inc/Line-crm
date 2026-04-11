@@ -91,6 +91,7 @@ interface Seminar {
   zoom_url?: string | null
   price?: number | null
   post_payment_url?: string | null
+  zoom_note?: string | null
 }
 
 const statusLabels: Record<string, string> = {
@@ -164,6 +165,7 @@ export default function SeminarDetailPage() {
     zoom_url: "",
     price: 0,
     post_payment_url: "",
+    zoom_note: "",
   })
   const [allTags, setAllTags] = useState<Tag[]>([])
 
@@ -241,6 +243,7 @@ export default function SeminarDetailPage() {
       zoom_url: seminar.zoom_url || "",
       price: seminar.price || 0,
       post_payment_url: seminar.post_payment_url || "",
+      zoom_note: seminar.zoom_note || "",
     })
     setEditOpen(true)
   }
@@ -264,6 +267,7 @@ export default function SeminarDetailPage() {
           zoomUrl: editForm.zoom_url,
           price: editForm.price || null,
           postPaymentUrl: editForm.post_payment_url || null,
+          zoomNote: editForm.zoom_note || null,
         }),
       })
       if (res.ok) {
@@ -980,6 +984,21 @@ export default function SeminarDetailPage() {
                 />
                 <p className="text-xs text-gray-400 mt-1">
                   決済完了後に自動送信されます。無料セミナーの場合は申込後に送信されます。
+                </p>
+              </div>
+
+              <div>
+                <Label htmlFor="edit-zoom-note">Zoom案内の注釈文</Label>
+                <textarea
+                  id="edit-zoom-note"
+                  value={editForm.zoom_note}
+                  onChange={(e) => setEditForm({ ...editForm, zoom_note: e.target.value })}
+                  placeholder={"例: ボタンで開けない場合は、以下のURLをSafari/Chromeにコピーしてください。\nZoomアプリを事前にインストールしておいてください。"}
+                  rows={3}
+                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none resize-none"
+                />
+                <p className="text-xs text-gray-400 mt-1">
+                  空欄の場合はデフォルトの案内文が使用されます。改行も反映されます。
                 </p>
               </div>
 

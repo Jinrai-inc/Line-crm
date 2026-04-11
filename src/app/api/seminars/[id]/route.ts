@@ -51,7 +51,7 @@ export async function PATCH(
     const body = await request.json()
     const updateData: Record<string, unknown> = { updated_at: new Date().toISOString() }
 
-    const fields = ["title", "description", "event_date", "start_time", "end_time", "location", "location_url", "capacity", "status", "registration_deadline", "tag_ids", "payment_url", "zoom_url", "price", "post_payment_url"]
+    const fields = ["title", "description", "event_date", "start_time", "end_time", "location", "location_url", "capacity", "status", "registration_deadline", "tag_ids", "payment_url", "zoom_url", "price", "post_payment_url", "zoom_note"]
     const fieldMap: Record<string, string> = {
       title: "title", description: "description", eventDate: "event_date",
       startTime: "start_time", endTime: "end_time", location: "location",
@@ -59,6 +59,7 @@ export async function PATCH(
       registrationDeadline: "registration_deadline", tagIds: "tag_ids",
       paymentUrl: "payment_url", zoomUrl: "zoom_url", price: "price",
       postPaymentUrl: "post_payment_url",
+      zoomNote: "zoom_note",
     }
 
     for (const [camel, snake] of Object.entries(fieldMap)) {

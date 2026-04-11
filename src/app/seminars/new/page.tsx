@@ -35,6 +35,7 @@ export default function SeminarNewPage() {
     zoomUrl: "",
     price: 0,
     postPaymentUrl: "",
+    zoomNote: "",
   })
   const [allTags, setAllTags] = useState<{ id: string; name: string }[]>([])
 
@@ -72,6 +73,7 @@ export default function SeminarNewPage() {
           zoomUrl: form.zoomUrl || null,
           price: form.price || null,
           postPaymentUrl: form.postPaymentUrl || null,
+          zoomNote: form.zoomNote || null,
         }),
       })
       if (res.ok) {
@@ -247,6 +249,21 @@ export default function SeminarNewPage() {
                   />
                   <p className="text-xs text-gray-400 mt-1">
                     決済完了後に自動送信されます。無料セミナーの場合は申込後に送信されます。
+                  </p>
+                </div>
+
+                <div>
+                  <Label htmlFor="zoomNote">Zoom案内の注釈文</Label>
+                  <textarea
+                    id="zoomNote"
+                    value={form.zoomNote}
+                    onChange={(e) => setForm({ ...form, zoomNote: e.target.value })}
+                    placeholder={"例: ボタンで開けない場合は、以下のURLをSafari/Chromeにコピーしてください。"}
+                    rows={3}
+                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none resize-none"
+                  />
+                  <p className="text-xs text-gray-400 mt-1">
+                    空欄の場合はデフォルトの案内文が使用されます。改行も反映されます。
                   </p>
                 </div>
 

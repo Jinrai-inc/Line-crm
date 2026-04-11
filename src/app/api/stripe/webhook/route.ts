@@ -121,11 +121,11 @@ export async function POST(request: NextRequest) {
               if (seminarId) {
                 const { data: seminarRaw } = await supabase
                   .from("seminars")
-                  .select("title, zoom_url, post_payment_url")
+                  .select("title, zoom_url, post_payment_url, zoom_note")
                   .eq("id", seminarId)
                   .single()
 
-                const seminar = seminarRaw as { title: string; zoom_url?: string | null; post_payment_url?: string | null } | null
+                const seminar = seminarRaw as { title: string; zoom_url?: string | null; post_payment_url?: string | null; zoom_note?: string | null } | null
 
                 // セミナー固有の決済後URL（TimeRex等）
                 if (seminar?.post_payment_url) {
@@ -186,7 +186,7 @@ export async function POST(request: NextRequest) {
                   seminarHandled = true
                   await pushMessage(
                     lineUserId,
-                    [createZoomLinkMessage(seminar.title, seminar.zoom_url)],
+                    [createZoomLinkMessage(seminar.title, seminar.zoom_url, seminar.zoom_note)],
                     { accessToken }
                   )
                 }
