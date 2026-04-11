@@ -996,6 +996,11 @@ export interface Database {
           default_coaching_price: number;
           auto_send_payment_link: boolean;
           send_receipt_via_line: boolean;
+          payment_auto_enabled: boolean;
+          payment_auto_url: string | null;
+          payment_auto_message: string | null;
+          payment_auto_button_text: string | null;
+          payment_auto_title: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -1009,6 +1014,11 @@ export interface Database {
           default_coaching_price?: number;
           auto_send_payment_link?: boolean;
           send_receipt_via_line?: boolean;
+          payment_auto_enabled?: boolean;
+          payment_auto_url?: string | null;
+          payment_auto_message?: string | null;
+          payment_auto_button_text?: string | null;
+          payment_auto_title?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -1022,6 +1032,11 @@ export interface Database {
           default_coaching_price?: number;
           auto_send_payment_link?: boolean;
           send_receipt_via_line?: boolean;
+          payment_auto_enabled?: boolean;
+          payment_auto_url?: string | null;
+          payment_auto_message?: string | null;
+          payment_auto_button_text?: string | null;
+          payment_auto_title?: string | null;
           created_at?: string;
           updated_at?: string;
         };

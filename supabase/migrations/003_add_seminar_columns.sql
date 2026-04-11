@@ -18,3 +18,13 @@ ALTER TABLE seminars ADD COLUMN IF NOT EXISTS post_payment_message TEXT;
 
 -- タグ紐付け
 ALTER TABLE seminars ADD COLUMN IF NOT EXISTS tag_ids UUID[] DEFAULT '{}';
+
+-- =============================================
+-- stripe_settingsテーブル: 決済後自動メッセージ設定カラム追加
+-- =============================================
+
+ALTER TABLE stripe_settings ADD COLUMN IF NOT EXISTS payment_auto_enabled BOOLEAN DEFAULT false;
+ALTER TABLE stripe_settings ADD COLUMN IF NOT EXISTS payment_auto_url TEXT;
+ALTER TABLE stripe_settings ADD COLUMN IF NOT EXISTS payment_auto_message TEXT;
+ALTER TABLE stripe_settings ADD COLUMN IF NOT EXISTS payment_auto_button_text TEXT;
+ALTER TABLE stripe_settings ADD COLUMN IF NOT EXISTS payment_auto_title TEXT;
