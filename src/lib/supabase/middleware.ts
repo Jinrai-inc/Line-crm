@@ -29,7 +29,8 @@ export async function updateSession(request: NextRequest) {
   const isAuthPage = request.nextUrl.pathname.startsWith('/login') || request.nextUrl.pathname.startsWith('/signup') || request.nextUrl.pathname.startsWith('/reset-password')
   const isWebhookRoute = request.nextUrl.pathname.startsWith('/api/webhook') || request.nextUrl.pathname.startsWith('/api/stripe/webhook')
   const isPublicApiRoute = request.nextUrl.pathname.startsWith('/api/auth')
-  const isPublicRoute = isAuthPage || isWebhookRoute || isPublicApiRoute
+  const isPaymentPage = request.nextUrl.pathname.startsWith('/payment/')
+  const isPublicRoute = isAuthPage || isWebhookRoute || isPublicApiRoute || isPaymentPage
 
   if (!user && !isPublicRoute) {
     const url = request.nextUrl.clone()
