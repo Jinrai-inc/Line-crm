@@ -112,7 +112,16 @@ export default function StripeSettingsPage() {
       const saveRes = await fetch("/api/stripe/settings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ secretKey, publishableKey, webhookSecret }),
+        body: JSON.stringify({
+          secretKey,
+          publishableKey,
+          webhookSecret,
+          paymentAutoEnabled,
+          paymentAutoMessage,
+          paymentAutoUrl,
+          paymentAutoButtonText,
+          paymentAutoTitle,
+        }),
       })
       if (!saveRes.ok) {
         setTestResult({ status: "error", message: "設定の保存に失敗しました。先に保存してください。" })

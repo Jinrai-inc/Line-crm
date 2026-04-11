@@ -508,7 +508,7 @@ async function handleSeminarList(
 
   // 各セミナーの申込数を取得
   const seminarInfos = await Promise.all(
-    seminars.map(async (s: { id: string; title: string; event_date: string; start_time: string | null; end_time: string | null; location: string | null; capacity: number }) => {
+    seminars.map(async (s: { id: string; title: string; event_date: string | null; start_time: string | null; end_time: string | null; location: string | null; capacity: number }) => {
       const { count } = await supabase
         .from("attendances")
         .select("*", { count: "exact", head: true })
@@ -816,7 +816,8 @@ async function handlePostback(
               { accessToken: context.channelAccessToken }
             )
           }
-        } catch {
+        } catch (stripeError) {
+          console.error("Stripe Checkout error:", stripeError)
           // Stripe Checkout失敗時は静的URLにフォールバック
           if (paymentUrl) {
             try {
@@ -825,7 +826,17 @@ async function handlePostback(
                 [createPaymentMessage(seminar.title, paymentUrl)],
                 { accessToken: context.channelAccessToken }
               )
-            } catch { /* ignore */ }
+            } catch (fallbackError) {
+              console.error("Payment fallback error:", fallbackError)
+              // 最終フォールバック: テキストメッセージで決済URLを送信
+              try {
+                await pushMessage(
+                  userId,
+                  [{ type: "text", text: `お申込みありがとうございます。\nお支払いはこちらからお願いいたします。\n${paymentUrl}` }],
+                  { accessToken: context.channelAccessToken }
+                )
+              } catch { /* ignore */ }
+            }
           }
         }
       } else if (paymentUrl) {
@@ -836,7 +847,16 @@ async function handlePostback(
             [createPaymentMessage(seminar.title, paymentUrl)],
             { accessToken: context.channelAccessToken }
           )
-        } catch { /* ignore */ }
+        } catch {
+          // フォールバック: テキストメッセージ
+          try {
+            await pushMessage(
+              userId,
+              [{ type: "text", text: `お申込みありがとうございます。\nお支払いはこちらからお願いいたします。\n${paymentUrl}` }],
+              { accessToken: context.channelAccessToken }
+            )
+          } catch { /* ignore */ }
+        }
       } else if (zoomUrl) {
         // 無料セミナー：Zoomリンクを即送信
         try {
@@ -1128,7 +1148,7 @@ async function handlePostback(
 
           if (selectedSeminars && selectedSeminars.length > 0) {
             const seminarInfos = await Promise.all(
-              selectedSeminars.map(async (s: { id: string; title: string; event_date: string; start_time: string | null; end_time: string | null; location: string | null; capacity: number }) => {
+              selectedSeminars.map(async (s: { id: string; title: string; event_date: string | null; start_time: string | null; end_time: string | null; location: string | null; capacity: number }) => {
                 const { count } = await supabase
                   .from("attendances")
                   .select("*", { count: "exact", head: true })
