@@ -52,7 +52,7 @@ export async function PATCH(
     const body = await request.json()
     const updateData: Record<string, unknown> = { updated_at: new Date().toISOString() }
 
-    const fields = ["title", "description", "event_date", "start_time", "end_time", "location", "location_url", "capacity", "status", "registration_deadline", "tag_ids", "payment_url", "zoom_url", "price", "post_payment_url", "zoom_note"]
+    const fields = ["title", "description", "event_date", "start_time", "end_time", "location", "location_url", "capacity", "status", "registration_deadline", "tag_ids", "payment_url", "zoom_url", "price", "post_payment_url", "zoom_note", "post_payment_message"]
     const fieldMap: Record<string, string> = {
       title: "title", description: "description", eventDate: "event_date",
       startTime: "start_time", endTime: "end_time", location: "location",
@@ -61,6 +61,7 @@ export async function PATCH(
       paymentUrl: "payment_url", zoomUrl: "zoom_url", price: "price",
       postPaymentUrl: "post_payment_url",
       zoomNote: "zoom_note",
+      postPaymentMessage: "post_payment_message",
     }
 
     // 空文字をnullに変換すべきカラム（DB型がtext以外のもの）

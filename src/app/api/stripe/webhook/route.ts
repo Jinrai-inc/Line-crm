@@ -121,15 +121,16 @@ export async function POST(request: NextRequest) {
               if (seminarId) {
                 const { data: seminarRaw } = await supabase
                   .from("seminars")
-                  .select("title, zoom_url, post_payment_url, zoom_note")
+                  .select("title, zoom_url, post_payment_url, zoom_note, post_payment_message")
                   .eq("id", seminarId)
                   .single()
 
-                const seminar = seminarRaw as { title: string; zoom_url?: string | null; post_payment_url?: string | null; zoom_note?: string | null } | null
+                const seminar = seminarRaw as { title: string; zoom_url?: string | null; post_payment_url?: string | null; zoom_note?: string | null; post_payment_message?: string | null } | null
 
                 // セミナー固有の決済後URL（TimeRex等）
                 if (seminar?.post_payment_url) {
                   seminarHandled = true
+                  const postPaymentMsg = seminar.post_payment_message || "以下のURLからご予約ください。\n詳細はご登録いただくメールよりご確認ください。"
                   await pushMessage(
                     lineUserId,
                     [{
@@ -150,7 +151,7 @@ export async function POST(request: NextRequest) {
                             },
                             {
                               type: "text",
-                              text: "以下のURLからご予約・詳細をご確認ください。",
+                              text: postPaymentMsg,
                               wrap: true,
                               margin: "md",
                               size: "sm",

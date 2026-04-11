@@ -91,6 +91,7 @@ interface Seminar {
   zoom_url?: string | null
   price?: number | null
   post_payment_url?: string | null
+  post_payment_message?: string | null
   zoom_note?: string | null
 }
 
@@ -165,6 +166,7 @@ export default function SeminarDetailPage() {
     zoom_url: "",
     price: 0,
     post_payment_url: "",
+    post_payment_message: "",
     zoom_note: "",
   })
   const [allTags, setAllTags] = useState<Tag[]>([])
@@ -243,6 +245,7 @@ export default function SeminarDetailPage() {
       zoom_url: seminar.zoom_url || "",
       price: seminar.price || 0,
       post_payment_url: seminar.post_payment_url || "",
+      post_payment_message: seminar.post_payment_message || "",
       zoom_note: seminar.zoom_note || "",
     })
     setEditOpen(true)
@@ -267,6 +270,7 @@ export default function SeminarDetailPage() {
           zoomUrl: editForm.zoom_url,
           price: editForm.price || null,
           postPaymentUrl: editForm.post_payment_url || null,
+          postPaymentMessage: editForm.post_payment_message || null,
           zoomNote: editForm.zoom_note || null,
         }),
       })
@@ -1016,6 +1020,21 @@ export default function SeminarDetailPage() {
                 />
                 <p className="text-xs text-gray-400 mt-1">
                   決済完了後にこのURLがLINEで送信されます。Zoomリンクとは別に送れます。
+                </p>
+              </div>
+
+              <div>
+                <Label htmlFor="edit-post-payment-message">決済後URLの案内文</Label>
+                <textarea
+                  id="edit-post-payment-message"
+                  value={editForm.post_payment_message}
+                  onChange={(e) => setEditForm({ ...editForm, post_payment_message: e.target.value })}
+                  placeholder={"例: 以下のURLからご予約ください。\n詳細はご登録いただくメールよりご確認ください"}
+                  rows={3}
+                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-green-500 focus:ring-1 focus:ring-green-500 outline-none resize-none"
+                />
+                <p className="text-xs text-gray-400 mt-1">
+                  空欄の場合はデフォルトの案内文が使用されます。改行も反映されます。
                 </p>
               </div>
             </div>

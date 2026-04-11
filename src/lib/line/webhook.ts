@@ -1185,10 +1185,9 @@ async function handlePostback(
 
         // 特典メッセージ or URL がある場合
         if (hasReward && (choice.rewardMessage || choice.rewardUrl)) {
-          const rewardMsg = replaceMessageTags(
-            choice.rewardMessage || "アンケートにご回答いただきありがとうございます！",
-            surveyUserName
-          )
+          const rewardMsg = choice.rewardMessage
+            ? replaceMessageTags(choice.rewardMessage, surveyUserName)
+            : ""
           replyMessages.push(createSurveyRewardMessage(rewardMsg, choice.rewardUrl))
         }
 

@@ -833,8 +833,14 @@ export function createSurveyRewardMessage(
   const bodyContents: unknown[] = [
     { type: "text", text: "🎁 特典のお届け", weight: "bold", size: "lg", color: "#06C755" },
     { type: "separator", margin: "lg" },
-    { type: "text", text: thankMessage, wrap: true, size: "sm", margin: "lg" },
   ]
+
+  // メッセージがある場合のみ表示
+  if (thankMessage) {
+    bodyContents.push(
+      { type: "text", text: thankMessage, wrap: true, size: "sm", margin: "lg" },
+    )
+  }
 
   const footerContents: unknown[] = []
   if (rewardUrl) {
