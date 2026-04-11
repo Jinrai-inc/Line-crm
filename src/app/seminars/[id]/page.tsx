@@ -335,6 +335,16 @@ export default function SeminarDetailPage() {
     }
   }
 
+  async function deleteAttendee(attendeeId: string) {
+    if (!confirm("この申込を削除しますか？削除すると再申込が可能になります。")) return
+    try {
+      const res = await fetch(`/api/attendances/${attendeeId}`, { method: "DELETE" })
+      if (res.ok) fetchSeminar()
+    } catch {
+      console.error("申込の削除に失敗しました")
+    }
+  }
+
   async function fetchTags() {
     try {
       const res = await fetch("/api/tags")
@@ -637,22 +647,32 @@ export default function SeminarDetailPage() {
                             {attendee.applied_at ? formatDateTime(attendee.applied_at) : "-"}
                           </TableCell>
                           <TableCell>
-                            <Select
-                              value={attendee.status}
-                              onValueChange={(value) =>
-                                changeAttendeeStatus(attendee.id, value)
-                              }
-                            >
-                              <SelectTrigger className="w-32 h-8 text-xs">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="applied">申込済</SelectItem>
-                                <SelectItem value="confirmed">確認済</SelectItem>
-                                <SelectItem value="attended">出席</SelectItem>
-                                <SelectItem value="cancelled">キャンセル</SelectItem>
-                              </SelectContent>
-                            </Select>
+                            <div className="flex items-center gap-2">
+                              <Select
+                                value={attendee.status}
+                                onValueChange={(value) =>
+                                  changeAttendeeStatus(attendee.id, value)
+                                }
+                              >
+                                <SelectTrigger className="w-32 h-8 text-xs">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="applied">申込済</SelectItem>
+                                  <SelectItem value="confirmed">確認済</SelectItem>
+                                  <SelectItem value="attended">出席</SelectItem>
+                                  <SelectItem value="cancelled">キャンセル</SelectItem>
+                                </SelectContent>
+                              </Select>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-red-400 hover:text-red-600 hover:bg-red-50"
+                                onClick={() => deleteAttendee(attendee.id)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
                           </TableCell>
                         </TableRow>
                       ))}
