@@ -815,6 +815,14 @@ async function handlePostback(
               [createPaymentMessage(seminar.title, paymentUrl)],
               { accessToken: context.channelAccessToken }
             )
+          } else {
+            // Stripe未設定かつ静的URLもない場合
+            console.error("No payment method configured for seminar:", seminar.id)
+            await pushMessage(
+              userId,
+              [{ type: "text", text: "お申込みありがとうございます。お支払い方法についてはスタッフからご連絡いたしますので、しばらくお待ちください。" }],
+              { accessToken: context.channelAccessToken }
+            )
           }
         } catch (stripeError) {
           console.error("Stripe Checkout error:", stripeError)

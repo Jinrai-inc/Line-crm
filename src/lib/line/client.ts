@@ -104,13 +104,13 @@ export async function getProfile(
   return res.json()
 }
 
-// 返信メッセージ送信
+// 返信メッセージ送信（リトライ付き）
 export async function replyMessage(
   replyToken: string,
   messages: unknown[],
   options: LineApiOptions
 ): Promise<void> {
-  const res = await fetch(`${LINE_API_BASE}/message/reply`, {
+  const res = await fetchWithRetry(`${LINE_API_BASE}/message/reply`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

@@ -138,7 +138,7 @@ export function createSeminarListMessage(seminars: SeminarInfo[]) {
               action: {
                 type: "message",
                 label: "満員です",
-                text: " ",
+                text: "満員のため申込できません",
               },
             },
           ]
