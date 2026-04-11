@@ -63,15 +63,18 @@ export async function PATCH(
       zoomNote: "zoom_note",
     }
 
+    // 空文字をnullに変換すべきカラム（DB型がtext以外のもの）
+    const nullableFields = new Set(["event_date", "start_time", "end_time", "registration_deadline", "price", "capacity"])
+
     for (const [camel, snake] of Object.entries(fieldMap)) {
       if (body[camel] !== undefined) {
-        updateData[snake] = body[camel]
+        updateData[snake] = (body[camel] === "" && nullableFields.has(snake)) ? null : body[camel]
       }
     }
     // snake_case の直接指定もサポート
     for (const field of fields) {
       if (body[field] !== undefined) {
-        updateData[field] = body[field]
+        updateData[field] = (body[field] === "" && nullableFields.has(field)) ? null : body[field]
       }
     }
 
