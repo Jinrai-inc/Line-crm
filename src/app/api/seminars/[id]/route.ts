@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getAuthenticatedOrgId } from "@/lib/api/auth"
+import { createAdminClient } from "@/lib/supabase/server"
 
 // セミナー詳細取得
 export async function GET(
@@ -74,14 +75,19 @@ export async function PATCH(
       }
     }
 
-    const { data, error } = await supabase
+    // admin clientを使用（RLSやスキーマキャッシュの問題を回避）
+    const adminClient = createAdminClient()
+    const { data, error } = await adminClient
       .from("seminars")
-      .update(updateData)
+      .update(updateData as never)
       .eq("id", id)
       .select()
       .single()
 
-    if (error) throw error
+    if (error) {
+      console.error("Seminar update error:", error, "updateData:", updateData)
+      throw error
+    }
     return NextResponse.json({ data })
   } catch (error) {
     console.error("Seminar PATCH error:", error)

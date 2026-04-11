@@ -273,9 +273,13 @@ export default function SeminarDetailPage() {
       if (res.ok) {
         setEditOpen(false)
         fetchSeminar()
+      } else {
+        const errData = await res.json().catch(() => ({}))
+        console.error("セミナー更新エラー:", errData)
+        alert("保存に失敗しました: " + (errData.error || "不明なエラー"))
       }
-    } catch {
-      console.error("更新に失敗しました")
+    } catch (err) {
+      console.error("更新に失敗しました", err)
     } finally {
       setSaving(false)
     }
@@ -817,11 +821,11 @@ export default function SeminarDetailPage() {
 
       {/* 編集ダイアログ */}
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>セミナー編集</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4">
+          <div className="space-y-4 pb-2">
             <div>
               <Label htmlFor="edit-title">タイトル</Label>
               <Input
