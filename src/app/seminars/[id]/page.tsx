@@ -821,7 +821,7 @@ export default function SeminarDetailPage() {
 
       {/* 編集ダイアログ */}
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>セミナー編集</DialogTitle>
           </DialogHeader>
