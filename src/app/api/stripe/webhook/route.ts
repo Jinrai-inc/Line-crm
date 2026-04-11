@@ -65,182 +65,149 @@ export async function POST(request: NextRequest) {
           console.error("Payment update error (checkout.session.completed):", error)
         }
 
-        // 入金後自動メッセージ送信
-        const settings = matchedSettings as Record<string, unknown>
-        if (settings.payment_auto_enabled && settings.payment_auto_url) {
-          try {
-            // friend_idを取得（メタデータまたはpaymentsテーブルから）
-            const friendId = session.metadata?.friend_id
-            let lineUserId: string | null = null
+        // 決済完了後のLINE通知処理
+        try {
+          // friend_idを取得（メタデータまたはpaymentsテーブルから）
+          const friendId = session.metadata?.friend_id
+          let lineUserId: string | null = null
 
-            if (friendId) {
+          if (friendId) {
+            const { data: friend } = await supabase
+              .from("friends")
+              .select("line_user_id")
+              .eq("id", friendId)
+              .single()
+            lineUserId = friend?.line_user_id || null
+          }
+
+          if (!lineUserId) {
+            // paymentsテーブルからfriend_idを取得
+            const { data: payment } = await supabase
+              .from("payments")
+              .select("friend_id")
+              .eq("stripe_checkout_session_id", session.id)
+              .single()
+            if (payment?.friend_id) {
               const { data: friend } = await supabase
                 .from("friends")
                 .select("line_user_id")
-                .eq("id", friendId)
+                .eq("id", payment.friend_id)
                 .single()
               lineUserId = friend?.line_user_id || null
             }
-
-            if (!lineUserId) {
-              // paymentsテーブルからfriend_idを取得
-              const { data: payment } = await supabase
-                .from("payments")
-                .select("friend_id")
-                .eq("stripe_checkout_session_id", session.id)
-                .single()
-              if (payment?.friend_id) {
-                const { data: friend } = await supabase
-                  .from("friends")
-                  .select("line_user_id")
-                  .eq("id", payment.friend_id)
-                  .single()
-                lineUserId = friend?.line_user_id || null
-              }
-            }
-
-            if (lineUserId) {
-              // LINE設定を取得
-              const { data: lineAccount } = await supabase
-                .from("line_accounts")
-                .select("channel_access_token")
-                .eq("organization_id", matchedSettings.organization_id!)
-                .single()
-
-              if (lineAccount?.channel_access_token) {
-                const messages: unknown[] = []
-                const autoMessage = (settings.payment_auto_message as string) || "お支払いありがとうございます。以下のURLから会議にご参加ください。"
-                const autoUrl = settings.payment_auto_url as string
-
-                messages.push({
-                  type: "flex",
-                  altText: autoMessage,
-                  contents: {
-                    type: "bubble",
-                    body: {
-                      type: "box",
-                      layout: "vertical",
-                      contents: [
-                        {
-                          type: "text",
-                          text: "お支払い確認",
-                          weight: "bold",
-                          size: "lg",
-                          color: "#06C755",
-                        },
-                        {
-                          type: "text",
-                          text: autoMessage,
-                          wrap: true,
-                          margin: "md",
-                          size: "sm",
-                          color: "#333333",
-                        },
-                      ],
-                    },
-                    footer: {
-                      type: "box",
-                      layout: "vertical",
-                      spacing: "sm",
-                      contents: [
-                        {
-                          type: "button",
-                          style: "primary",
-                          color: "#06C755",
-                          action: {
-                            type: "uri",
-                            label: "会議URLを開く",
-                            uri: autoUrl,
-                          },
-                        },
-                      ],
-                    },
-                  },
-                })
-
-                await pushMessage(lineUserId, messages, {
-                  accessToken: lineAccount.channel_access_token,
-                })
-              }
-            }
-          } catch (autoMsgError) {
-            console.error("Payment auto-message send error:", autoMsgError)
-            // 自動メッセージ送信失敗は決済処理に影響させない
           }
-        }
 
-        // セミナー決済完了 → Zoomリンク自動送信
-        const seminarId = session.metadata?.seminar_id
-        if (seminarId) {
-          try {
-            const { data: seminarRaw } = await supabase
-              .from("seminars")
-              .select("title, zoom_url")
-              .eq("id", seminarId)
+          if (lineUserId) {
+            // LINE設定を取得
+            const { data: lineAccount } = await supabase
+              .from("line_accounts")
+              .select("channel_access_token")
+              .eq("organization_id", matchedSettings.organization_id!)
               .single()
 
-            const seminar = seminarRaw as { title: string; zoom_url?: string | null } | null
-            const zoomUrl = seminar?.zoom_url as string | null
-            if (seminar && zoomUrl) {
-              // 友だちのLINE IDを取得
-              const friendId = session.metadata?.friend_id
-              let lineUserId: string | null = null
+            if (lineAccount?.channel_access_token) {
+              const accessToken = lineAccount.channel_access_token
 
-              if (friendId) {
-                const { data: f } = await supabase
-                  .from("friends")
-                  .select("line_user_id")
-                  .eq("id", friendId)
-                  .single()
-                lineUserId = f?.line_user_id || null
+              // 1. 必ず決済完了の確認メッセージを送信
+              await pushMessage(
+                lineUserId,
+                [{ type: "text", text: "お支払いが確認されました。ありがとうございます！" }],
+                { accessToken }
+              )
+
+              // 2. 自動メッセージ（payment_auto_url設定あり）
+              const settings = matchedSettings as Record<string, unknown>
+              if (settings.payment_auto_enabled && settings.payment_auto_url) {
+                const autoMessage = (settings.payment_auto_message as string) || "以下のURLからご予約・ご参加ください。"
+                const autoUrl = settings.payment_auto_url as string
+                const autoButtonText = (settings.payment_auto_button_text as string) || "URLを開く"
+                const autoTitle = (settings.payment_auto_title as string) || "ご案内"
+
+                await pushMessage(
+                  lineUserId,
+                  [{
+                    type: "flex",
+                    altText: autoTitle,
+                    contents: {
+                      type: "bubble",
+                      body: {
+                        type: "box",
+                        layout: "vertical",
+                        contents: [
+                          {
+                            type: "text",
+                            text: autoTitle,
+                            weight: "bold",
+                            size: "lg",
+                            color: "#06C755",
+                          },
+                          {
+                            type: "text",
+                            text: autoMessage,
+                            wrap: true,
+                            margin: "md",
+                            size: "sm",
+                            color: "#333333",
+                          },
+                        ],
+                      },
+                      footer: {
+                        type: "box",
+                        layout: "vertical",
+                        spacing: "sm",
+                        contents: [
+                          {
+                            type: "button",
+                            style: "primary",
+                            color: "#06C755",
+                            action: {
+                              type: "uri",
+                              label: autoButtonText,
+                              uri: autoUrl,
+                            },
+                          },
+                        ],
+                      },
+                    },
+                  }],
+                  { accessToken }
+                )
               }
 
-              if (!lineUserId) {
-                // paymentsテーブルから取得
-                const { data: payment } = await supabase
-                  .from("payments")
-                  .select("friend_id")
-                  .eq("stripe_checkout_session_id", session.id)
-                  .single()
-                if (payment?.friend_id) {
-                  const { data: f } = await supabase
-                    .from("friends")
-                    .select("line_user_id")
-                    .eq("id", payment.friend_id)
-                    .single()
-                  lineUserId = f?.line_user_id || null
-                }
-              }
-
-              if (lineUserId) {
-                const { data: lineAccount } = await supabase
-                  .from("line_accounts")
-                  .select("channel_access_token")
-                  .eq("organization_id", matchedSettings.organization_id!)
+              // 3. セミナーのZoomリンク自動送信
+              const seminarId = session.metadata?.seminar_id
+              if (seminarId) {
+                const { data: seminarRaw } = await supabase
+                  .from("seminars")
+                  .select("title, zoom_url")
+                  .eq("id", seminarId)
                   .single()
 
-                if (lineAccount?.channel_access_token) {
+                const seminar = seminarRaw as { title: string; zoom_url?: string | null } | null
+                const zoomUrl = seminar?.zoom_url as string | null
+                if (seminar && zoomUrl) {
                   await pushMessage(
                     lineUserId,
                     [createZoomLinkMessage(seminar.title, zoomUrl)],
-                    { accessToken: lineAccount.channel_access_token }
+                    { accessToken }
                   )
+                }
 
-                  // 出席ステータスを「確認済み」に更新
-                  if (friendId) {
-                    await supabase
-                      .from("attendances")
-                      .update({ status: "confirmed" })
-                      .eq("friend_id", friendId)
-                      .eq("seminar_id", seminarId)
-                      .eq("status", "applied")
-                  }
+                // 出席ステータスを「確認済み」に更新
+                if (friendId) {
+                  await supabase
+                    .from("attendances")
+                    .update({ status: "confirmed" })
+                    .eq("friend_id", friendId)
+                    .eq("seminar_id", seminarId)
+                    .eq("status", "applied")
                 }
               }
             }
-          } catch (zoomError) {
-            console.error("Zoom link send error:", zoomError)
           }
+        } catch (notifyError) {
+          console.error("Payment notification error:", notifyError)
+          // 通知失敗は決済処理に影響させない
         }
         break
       }
