@@ -26,7 +26,7 @@ interface Seminar {
   id: string
   title: string
   description: string
-  event_date: string
+  event_date: string | null
   start_time: string
   end_time: string
   location: string | null
@@ -147,7 +147,7 @@ export default function SeminarsPage() {
                 <CardContent className="space-y-2">
                   <div className="flex items-center gap-2 text-sm text-gray-600">
                     <CalendarDays className="h-4 w-4 shrink-0" />
-                    <span>{formatDate(seminar.event_date)}</span>
+                    <span>{seminar.event_date ? formatDate(seminar.event_date) : "日付未定"}</span>
                   </div>
                   <div className="flex items-center gap-2 text-sm text-gray-600">
                     <Clock className="h-4 w-4 shrink-0" />

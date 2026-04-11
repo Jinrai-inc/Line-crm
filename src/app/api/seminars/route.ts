@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
       .from("seminars")
       .select("*", { count: "exact" })
       .eq("organization_id", orgId)
-      .order("event_date", { ascending: true })
+      .order("event_date", { ascending: true, nullsFirst: false })
 
     if (status && status !== "all") {
       query = query.eq("status", status)
@@ -53,8 +53,8 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { title, description, eventDate, startTime, endTime, location, locationUrl, capacity, status: seminarStatus, registrationDeadline, tag_ids, paymentUrl, zoomUrl, price } = body
 
-    if (!title || !eventDate) {
-      return NextResponse.json({ error: "セミナー名と開催日は必須です" }, { status: 400 })
+    if (!title) {
+      return NextResponse.json({ error: "セミナー名は必須です" }, { status: 400 })
     }
 
     const { data, error } = await supabase
@@ -63,7 +63,7 @@ export async function POST(request: NextRequest) {
         organization_id: orgId,
         title,
         description,
-        event_date: eventDate,
+        event_date: eventDate || null,
         start_time: startTime || null,
         end_time: endTime || null,
         location,

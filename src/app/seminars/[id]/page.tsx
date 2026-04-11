@@ -78,7 +78,7 @@ interface Seminar {
   id: string
   title: string
   description: string
-  event_date: string
+  event_date: string | null
   start_time: string
   end_time: string
   location: string | null
@@ -153,6 +153,7 @@ export default function SeminarDetailPage() {
     title: "",
     description: "",
     date: "",
+    dateTbd: false,
     start_time: "",
     end_time: "",
     venue: "",
@@ -227,7 +228,8 @@ export default function SeminarDetailPage() {
     setEditForm({
       title: seminar.title,
       description: seminar.description,
-      date: seminar.event_date,
+      date: seminar.event_date || "",
+      dateTbd: !seminar.event_date,
       start_time: seminar.start_time || "",
       end_time: seminar.end_time || "",
       venue: seminar.location || "",
@@ -249,7 +251,7 @@ export default function SeminarDetailPage() {
         body: JSON.stringify({
           title: editForm.title,
           description: editForm.description,
-          eventDate: editForm.date,
+          eventDate: editForm.dateTbd ? null : editForm.date,
           startTime: editForm.start_time,
           endTime: editForm.end_time,
           location: editForm.venue,
@@ -534,7 +536,7 @@ export default function SeminarDetailPage() {
                 <div className="flex items-center gap-2 text-sm">
                   <CalendarDays className="h-4 w-4 text-gray-400" />
                   <span className="text-gray-500">日付:</span>
-                  <span>{formatDate(seminar.event_date)}</span>
+                  <span>{seminar.event_date ? formatDate(seminar.event_date) : "日付未定"}</span>
                 </div>
                 <div className="flex items-center gap-2 text-sm">
                   <Clock className="h-4 w-4 text-gray-400" />
@@ -817,7 +819,17 @@ export default function SeminarDetailPage() {
                   type="date"
                   value={editForm.date}
                   onChange={(e) => setEditForm({ ...editForm, date: e.target.value })}
+                  disabled={editForm.dateTbd}
                 />
+                <label className="flex items-center gap-1.5 mt-1.5 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={editForm.dateTbd}
+                    onChange={(e) => setEditForm({ ...editForm, dateTbd: e.target.checked, date: e.target.checked ? "" : editForm.date })}
+                    className="rounded border-gray-300"
+                  />
+                  <span className="text-xs text-gray-500">日付未定</span>
+                </label>
               </div>
               <div>
                 <Label htmlFor="edit-venue">会場</Label>

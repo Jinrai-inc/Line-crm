@@ -25,6 +25,7 @@ export default function SeminarNewPage() {
     title: "",
     description: "",
     date: "",
+    dateTbd: false,
     startTime: "",
     endTime: "",
     venue: "",
@@ -43,7 +44,7 @@ export default function SeminarNewPage() {
   function validate(): boolean {
     const newErrors: FormErrors = {}
     if (!form.title.trim()) newErrors.title = "タイトルは必須です"
-    if (!form.date) newErrors.date = "日付は必須です"
+    if (!form.dateTbd && !form.date) newErrors.date = "日付を入力するか「日付未定」にチェックしてください"
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
   }
@@ -60,7 +61,7 @@ export default function SeminarNewPage() {
         body: JSON.stringify({
           title: form.title,
           description: form.description,
-          eventDate: form.date,
+          eventDate: form.dateTbd ? null : form.date,
           startTime: form.startTime,
           endTime: form.endTime,
           location: form.venue,
@@ -133,7 +134,7 @@ export default function SeminarNewPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <Label htmlFor="date">
-                    日付 <span className="text-red-500">*</span>
+                    日付 {!form.dateTbd && <span className="text-red-500">*</span>}
                   </Label>
                   <Input
                     id="date"
@@ -141,7 +142,17 @@ export default function SeminarNewPage() {
                     value={form.date}
                     onChange={(e) => setForm({ ...form, date: e.target.value })}
                     className={errors.date ? "border-red-500" : ""}
+                    disabled={form.dateTbd}
                   />
+                  <label className="flex items-center gap-1.5 mt-1.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={form.dateTbd}
+                      onChange={(e) => setForm({ ...form, dateTbd: e.target.checked, date: e.target.checked ? "" : form.date })}
+                      className="rounded border-gray-300"
+                    />
+                    <span className="text-xs text-gray-500">日付未定</span>
+                  </label>
                   {errors.date && (
                     <p className="text-xs text-red-500 mt-1">{errors.date}</p>
                   )}
