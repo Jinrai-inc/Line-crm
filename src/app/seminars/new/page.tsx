@@ -34,6 +34,7 @@ export default function SeminarNewPage() {
     paymentUrl: "",
     zoomUrl: "",
     price: 0,
+    postPaymentUrl: "",
   })
   const [allTags, setAllTags] = useState<{ id: string; name: string }[]>([])
 
@@ -70,6 +71,7 @@ export default function SeminarNewPage() {
           paymentUrl: form.paymentUrl || null,
           zoomUrl: form.zoomUrl || null,
           price: form.price || null,
+          postPaymentUrl: form.postPaymentUrl || null,
         }),
       })
       if (res.ok) {
@@ -245,6 +247,19 @@ export default function SeminarNewPage() {
                   />
                   <p className="text-xs text-gray-400 mt-1">
                     決済完了後に自動送信されます。無料セミナーの場合は申込後に送信されます。
+                  </p>
+                </div>
+
+                <div>
+                  <Label htmlFor="postPaymentUrl">決済後に送るURL（予約ページ等）</Label>
+                  <Input
+                    id="postPaymentUrl"
+                    value={form.postPaymentUrl}
+                    onChange={(e) => setForm({ ...form, postPaymentUrl: e.target.value })}
+                    placeholder="https://timerex.net/... など"
+                  />
+                  <p className="text-xs text-gray-400 mt-1">
+                    決済完了後にこのURLがLINEで送信されます。Zoomリンクとは別に送れます。
                   </p>
                 </div>
               </div>

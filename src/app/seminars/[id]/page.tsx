@@ -90,6 +90,7 @@ interface Seminar {
   payment_url?: string | null
   zoom_url?: string | null
   price?: number | null
+  post_payment_url?: string | null
 }
 
 const statusLabels: Record<string, string> = {
@@ -162,6 +163,7 @@ export default function SeminarDetailPage() {
     payment_url: "",
     zoom_url: "",
     price: 0,
+    post_payment_url: "",
   })
   const [allTags, setAllTags] = useState<Tag[]>([])
 
@@ -238,6 +240,7 @@ export default function SeminarDetailPage() {
       payment_url: seminar.payment_url || "",
       zoom_url: seminar.zoom_url || "",
       price: seminar.price || 0,
+      post_payment_url: seminar.post_payment_url || "",
     })
     setEditOpen(true)
   }
@@ -260,6 +263,7 @@ export default function SeminarDetailPage() {
           paymentUrl: editForm.payment_url,
           zoomUrl: editForm.zoom_url,
           price: editForm.price || null,
+          postPaymentUrl: editForm.post_payment_url || null,
         }),
       })
       if (res.ok) {
@@ -976,6 +980,19 @@ export default function SeminarDetailPage() {
                 />
                 <p className="text-xs text-gray-400 mt-1">
                   決済完了後に自動送信されます。無料セミナーの場合は申込後に送信されます。
+                </p>
+              </div>
+
+              <div>
+                <Label htmlFor="edit-post-payment-url">決済後に送るURL（予約ページ等）</Label>
+                <Input
+                  id="edit-post-payment-url"
+                  value={editForm.post_payment_url}
+                  onChange={(e) => setEditForm({ ...editForm, post_payment_url: e.target.value })}
+                  placeholder="https://timerex.net/... など"
+                />
+                <p className="text-xs text-gray-400 mt-1">
+                  決済完了後にこのURLがLINEで送信されます。Zoomリンクとは別に送れます。
                 </p>
               </div>
             </div>
