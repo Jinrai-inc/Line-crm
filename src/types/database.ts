@@ -223,7 +223,7 @@ export interface Database {
           organization_id: string | null;
           title: string;
           description: string | null;
-          event_date: string;
+          event_date: string | null;
           start_time: string | null;
           end_time: string | null;
           location: string | null;
@@ -232,6 +232,13 @@ export interface Database {
           status: string;
           registration_deadline: string | null;
           reminder_sent: boolean;
+          payment_url: string | null;
+          price: number | null;
+          zoom_url: string | null;
+          zoom_note: string | null;
+          post_payment_url: string | null;
+          post_payment_message: string | null;
+          tag_ids: string[] | null;
           created_at: string;
           updated_at: string;
         };
@@ -240,7 +247,7 @@ export interface Database {
           organization_id?: string | null;
           title: string;
           description?: string | null;
-          event_date: string;
+          event_date?: string | null;
           start_time?: string | null;
           end_time?: string | null;
           location?: string | null;
@@ -249,6 +256,13 @@ export interface Database {
           status?: string;
           registration_deadline?: string | null;
           reminder_sent?: boolean;
+          payment_url?: string | null;
+          price?: number | null;
+          zoom_url?: string | null;
+          zoom_note?: string | null;
+          post_payment_url?: string | null;
+          post_payment_message?: string | null;
+          tag_ids?: string[] | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -257,7 +271,7 @@ export interface Database {
           organization_id?: string | null;
           title?: string;
           description?: string | null;
-          event_date?: string;
+          event_date?: string | null;
           start_time?: string | null;
           end_time?: string | null;
           location?: string | null;
@@ -266,6 +280,13 @@ export interface Database {
           status?: string;
           registration_deadline?: string | null;
           reminder_sent?: boolean;
+          payment_url?: string | null;
+          price?: number | null;
+          zoom_url?: string | null;
+          zoom_note?: string | null;
+          post_payment_url?: string | null;
+          post_payment_message?: string | null;
+          tag_ids?: string[] | null;
           created_at?: string;
           updated_at?: string;
         };
