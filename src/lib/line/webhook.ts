@@ -877,9 +877,65 @@ async function handlePostback(
       }
       break
     }
-    case "cancel_seminar":
-      // キャンセル処理
+    case "cancel_seminar": {
+      const cancelSeminarId = params.get("seminar_id")
+      const cancelUserId = event.source.userId
+      if (!cancelSeminarId || !cancelUserId) break
+
+      const { data: cancelFriend } = await supabase
+        .from("friends")
+        .select("id")
+        .eq("line_user_id", cancelUserId)
+        .eq("organization_id", context.organizationId)
+        .single()
+
+      if (!cancelFriend) {
+        if (event.replyToken) {
+          await replyMessage(
+            event.replyToken,
+            [{ type: "text", text: "エラーが発生しました。もう一度お試しください。" }],
+            { accessToken: context.channelAccessToken }
+          )
+        }
+        break
+      }
+
+      const { data: cancelAttendance } = await supabase
+        .from("attendances")
+        .select("id, status")
+        .eq("friend_id", cancelFriend.id)
+        .eq("seminar_id", cancelSeminarId)
+        .neq("status", "cancelled")
+        .single()
+
+      if (!cancelAttendance) {
+        if (event.replyToken) {
+          await replyMessage(
+            event.replyToken,
+            [{ type: "text", text: "お申込みが見つかりませんでした。" }],
+            { accessToken: context.channelAccessToken }
+          )
+        }
+        break
+      }
+
+      await supabase
+        .from("attendances")
+        .update({
+          status: "cancelled",
+          cancelled_at: new Date().toISOString(),
+        })
+        .eq("id", cancelAttendance.id)
+
+      if (event.replyToken) {
+        await replyMessage(
+          event.replyToken,
+          [{ type: "text", text: "お申込みをキャンセルしました。\nまたのご参加をお待ちしております。" }],
+          { accessToken: context.channelAccessToken }
+        )
+      }
       break
+    }
     case "omiai_result":
       // お見合い結果処理
       break
