@@ -110,7 +110,7 @@ export function createSeminarListMessage(seminars: SeminarInfo[]) {
                     ],
                   },
                 ]
-              : seminar.capacity > 0 && seminar.capacity - seminar.attendeeCount <= 3
+              : seminar.capacity > 0 && seminar.capacity - seminar.attendeeCount <= 5
                 ? [
                     {
                       type: "box" as const,
