@@ -32,7 +32,7 @@ interface PaymentInfo {
 interface SeminarInfo {
   id: string
   title: string
-  eventDate: string
+  eventDate: string | null
   startTime?: string
   endTime?: string
   location?: string
@@ -76,7 +76,9 @@ export function createSeminarListMessage(seminars: SeminarInfo[]) {
                 { type: "text", text: "日時", color: "#aaaaaa", size: "sm", flex: 1 },
                 {
                   type: "text",
-                  text: `${seminar.eventDate}${seminar.startTime ? ` ${seminar.startTime}` : ""}${seminar.endTime ? `〜${seminar.endTime}` : ""}`,
+                  text: seminar.eventDate
+                    ? `${seminar.eventDate}${seminar.startTime ? ` ${seminar.startTime}` : ""}${seminar.endTime ? `〜${seminar.endTime}` : ""}`
+                    : "日程未定",
                   wrap: true,
                   size: "sm",
                   flex: 3,
@@ -96,27 +98,31 @@ export function createSeminarListMessage(seminars: SeminarInfo[]) {
                   },
                 ]
               : []),
-            {
-              type: "box",
-              layout: "baseline",
-              spacing: "sm",
-              contents: [
-                { type: "text", text: "残席", color: "#aaaaaa", size: "sm", flex: 1 },
-                {
-                  type: "text",
-                  text:
-                    seminar.capacity > 0
-                      ? `${seminar.capacity - seminar.attendeeCount}名`
-                      : "制限なし",
-                  size: "sm",
-                  flex: 3,
-                  color:
-                    seminar.capacity > 0 && seminar.capacity - seminar.attendeeCount <= 3
-                      ? "#FF0000"
-                      : "#111111",
-                },
-              ],
-            },
+            ...(seminar.capacity > 0 && seminar.capacity <= seminar.attendeeCount
+              ? [
+                  {
+                    type: "box" as const,
+                    layout: "baseline" as const,
+                    spacing: "sm" as const,
+                    contents: [
+                      { type: "text" as const, text: "状況", color: "#aaaaaa", size: "sm" as const, flex: 1 },
+                      { type: "text" as const, text: "満員", size: "sm" as const, flex: 3, color: "#FF0000", weight: "bold" as const },
+                    ],
+                  },
+                ]
+              : seminar.capacity > 0 && seminar.capacity - seminar.attendeeCount <= 3
+                ? [
+                    {
+                      type: "box" as const,
+                      layout: "baseline" as const,
+                      spacing: "sm" as const,
+                      contents: [
+                        { type: "text" as const, text: "状況", color: "#aaaaaa", size: "sm" as const, flex: 1 },
+                        { type: "text" as const, text: "残りわずか", size: "sm" as const, flex: 3, color: "#FF6600", weight: "bold" as const },
+                      ],
+                    },
+                  ]
+                : []),
           ],
         },
       ],
@@ -124,19 +130,31 @@ export function createSeminarListMessage(seminars: SeminarInfo[]) {
     footer: {
       type: "box",
       layout: "vertical",
-      contents: [
-        {
-          type: "button",
-          style: "primary",
-          color: "#06C755",
-          action: {
-            type: "postback",
-            label: "申し込む",
-            data: `action=apply_seminar&seminar_id=${seminar.id}&index=${index + 1}`,
-            displayText: `参加申込 ${index + 1}`,
-          },
-        },
-      ],
+      contents: seminar.capacity > 0 && seminar.capacity <= seminar.attendeeCount
+        ? [
+            {
+              type: "button",
+              style: "secondary",
+              action: {
+                type: "message",
+                label: "満員です",
+                text: " ",
+              },
+            },
+          ]
+        : [
+            {
+              type: "button",
+              style: "primary",
+              color: "#06C755",
+              action: {
+                type: "postback",
+                label: "申し込む",
+                data: `action=apply_seminar&seminar_id=${seminar.id}&index=${index + 1}`,
+                displayText: `参加申込 ${index + 1}`,
+              },
+            },
+          ],
     },
   }))
 
@@ -174,7 +192,9 @@ export function createApplyConfirmMessage(seminar: SeminarInfo) {
             { type: "text", text: seminar.title, weight: "bold", size: "md", wrap: true },
             {
               type: "text",
-              text: `📅 ${seminar.eventDate}${seminar.startTime ? ` ${seminar.startTime}` : ""}${seminar.endTime ? `〜${seminar.endTime}` : ""}`,
+              text: seminar.eventDate
+                ? `📅 ${seminar.eventDate}${seminar.startTime ? ` ${seminar.startTime}` : ""}${seminar.endTime ? `〜${seminar.endTime}` : ""}`
+                : "📅 日程未定",
               size: "sm",
               margin: "md",
             },
