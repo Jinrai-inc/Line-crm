@@ -774,8 +774,8 @@ async function handlePostback(
                 quantity: 1,
               }],
               mode: "payment",
-              success_url: `${origin}/seminars/${seminar.id}?payment=success`,
-              cancel_url: `${origin}/seminars/${seminar.id}?payment=cancel`,
+              success_url: `${origin}/payment/complete?status=success`,
+              cancel_url: `${origin}/payment/complete?status=cancel`,
               metadata: {
                 organization_id: context.organizationId,
                 friend_id: friend.id,
@@ -784,7 +784,7 @@ async function handlePostback(
             })
 
             // 支払いレコードを保存
-            await (supabase
+            const { error: paymentInsertError } = await supabase
               .from("payments" as never)
               .insert({
                 organization_id: context.organizationId,
@@ -796,8 +796,10 @@ async function handlePostback(
                 status: "pending",
                 payment_type: "checkout",
                 item_name: seminar.title,
-                metadata: { seminar_id: seminar.id },
-              } as never) as unknown as Promise<{ error: unknown }>)
+              } as never)
+            if (paymentInsertError) {
+              console.error("Payment insert error:", paymentInsertError)
+            }
 
             if (session.url) {
               await pushMessage(
