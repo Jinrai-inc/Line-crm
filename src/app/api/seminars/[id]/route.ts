@@ -86,12 +86,18 @@ export async function PATCH(
 
     if (error) {
       console.error("Seminar update error:", error, "updateData:", updateData)
-      throw error
+      // エラー詳細を返す
+      return NextResponse.json({
+        error: `更新エラー: ${error.message || JSON.stringify(error)}`,
+        code: error.code,
+        details: error.details,
+      }, { status: 500 })
     }
     return NextResponse.json({ data })
   } catch (error) {
     console.error("Seminar PATCH error:", error)
-    return NextResponse.json({ error: "セミナーの更新に失敗しました" }, { status: 500 })
+    const msg = error instanceof Error ? error.message : "不明なエラー"
+    return NextResponse.json({ error: `セミナーの更新に失敗しました: ${msg}` }, { status: 500 })
   }
 }
 
