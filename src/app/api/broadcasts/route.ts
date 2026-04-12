@@ -69,20 +69,65 @@ async function logBroadcastDelivery(
 export const maxDuration = 300
 
 // 配信履歴一覧
+//
+// 各配信レコードに delivery_log_count を付与して返す。これにより一覧画面で
+// 「broadcasts.sent_count と message_logs に記録されている個別履歴の数」を
+// 一目で比較でき、整合性の取れていない配信（旧実装で送信され個別履歴が
+// 欠落している、backfill が必要、などのケース）を容易に見つけられる。
 export async function GET() {
   try {
     const auth = await getAuthenticatedOrgId()
     if (!auth.ok) return auth.response
-    const { supabase, orgId } = auth
+    const { orgId } = auth
 
-    const { data: broadcasts, error } = await supabase
+    // 読み取りも admin で統一（webhook 由来のログ数を正確に数えるため）
+    const admin = createAdminClient()
+
+    const { data: broadcasts, error } = await admin
       .from("broadcasts")
       .select("*")
       .eq("organization_id", orgId)
       .order("created_at", { ascending: false })
 
     if (error) throw error
-    return NextResponse.json({ data: broadcasts || [] })
+
+    const rows = (broadcasts || []) as Array<Record<string, unknown> & { id: string }>
+
+    // 各配信ごとに message_logs の件数を COUNT で取得する。
+    // count: "exact" + head: true を使うことで行本体をフェッチせず
+    // 集計だけ返すため、1000 行上限の影響を受けない。
+    // 最大 20 件並列で実行して一覧取得の待ち時間を抑える。
+    const concurrency = 20
+    const deliveryCounts = new Map<string, number>()
+    for (let i = 0; i < rows.length; i += concurrency) {
+      const batch = rows.slice(i, i + concurrency)
+      await Promise.all(
+        batch.map(async (b) => {
+          try {
+            const { count } = await (admin
+              .from("message_logs")
+              .select("*", { count: "exact", head: true })
+              .eq("organization_id", orgId)
+              .eq("event_type", "message_send")
+              .filter("raw_event->>broadcast_id" as never, "eq", b.id) as unknown as Promise<{
+                count: number | null
+                error: unknown
+              }>)
+            deliveryCounts.set(b.id, count ?? 0)
+          } catch (err) {
+            console.error(`broadcasts GET: delivery count failed for ${b.id}`, err)
+            deliveryCounts.set(b.id, 0)
+          }
+        })
+      )
+    }
+
+    const enriched = rows.map((b) => ({
+      ...b,
+      delivery_log_count: deliveryCounts.get(b.id) ?? 0,
+    }))
+
+    return NextResponse.json({ data: enriched })
   } catch (error) {
     console.error("Broadcasts GET error:", error)
     return NextResponse.json({ error: "配信履歴の取得に失敗しました" }, { status: 500 })

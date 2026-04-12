@@ -95,6 +95,7 @@ interface BroadcastData {
   failed_count: number
   sent_at: string | null
   created_at: string
+  delivery_log_count?: number
 }
 
 const STATUS_CONFIG: Record<
@@ -893,6 +894,7 @@ export default function BroadcastsPage() {
                       <TableHead>配信対象</TableHead>
                       <TableHead className="text-right">送信数</TableHead>
                       <TableHead>ステータス</TableHead>
+                      <TableHead>整合性</TableHead>
                       <TableHead>送信日時</TableHead>
                       <TableHead className="w-24 text-right">詳細</TableHead>
                     </TableRow>
@@ -901,6 +903,21 @@ export default function BroadcastsPage() {
                     {broadcasts.map((broadcast) => {
                       const statusConfig =
                         STATUS_CONFIG[broadcast.status] ?? STATUS_CONFIG.draft
+                      // 整合性バッジの判定
+                      // sent_count と delivery_log_count を比較して、過去配信の
+                      // 個別履歴の欠落/補填済みを一目で判定できるようにする。
+                      const deliveryLogCount = broadcast.delivery_log_count ?? 0
+                      const sentCount = broadcast.sent_count ?? 0
+                      const integrityBadge =
+                        broadcast.status !== "sent"
+                          ? null
+                          : sentCount === 0 && deliveryLogCount === 0
+                          ? { label: "未送信", className: "bg-gray-100 text-gray-500 border-gray-200" }
+                          : sentCount === deliveryLogCount
+                          ? { label: `✓ 整合 (${deliveryLogCount})`, className: "bg-green-100 text-green-700 border-green-200" }
+                          : sentCount > deliveryLogCount
+                          ? { label: `⚠ 履歴欠落 (${deliveryLogCount}/${sentCount})`, className: "bg-amber-100 text-amber-800 border-amber-200" }
+                          : { label: `補填済み (${deliveryLogCount})`, className: "bg-blue-100 text-blue-700 border-blue-200" }
                       return (
                         <TableRow key={broadcast.id}>
                           <TableCell className="font-medium">
@@ -921,6 +938,22 @@ export default function BroadcastsPage() {
                               {statusConfig.icon}
                               {statusConfig.label}
                             </Badge>
+                          </TableCell>
+                          <TableCell>
+                            {integrityBadge ? (
+                              <span
+                                className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[11px] font-medium ${integrityBadge.className}`}
+                                title={
+                                  broadcast.status === "sent"
+                                    ? `sent_count=${sentCount} / delivery_log=${deliveryLogCount}`
+                                    : ""
+                                }
+                              >
+                                {integrityBadge.label}
+                              </span>
+                            ) : (
+                              <span className="text-gray-300 text-xs">-</span>
+                            )}
                           </TableCell>
                           <TableCell className="text-gray-500">
                             {formatDateTime(broadcast.sent_at)}
