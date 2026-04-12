@@ -1170,8 +1170,10 @@ async function handlePostback(
       })
 
       // 特典の有無を判定
+      // セミナーアンケート等、hasReward フラグを持たないアンケートでは undefined になる。
+      // 明示的に false（トグルOFF）のときのみ特典送信を抑止する。
       const hasRewardContent = choice.rewardMessage || choice.rewardUrl || choice.file
-      const hasReward = question.hasReward === true && hasRewardContent
+      const hasReward = question.hasReward !== false && hasRewardContent
 
       // replyToken で自動返信メッセージ・特典メッセージを送信
       let replyUsed = false
