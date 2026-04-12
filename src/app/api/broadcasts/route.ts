@@ -142,57 +142,76 @@ export async function POST(request: NextRequest) {
       // 全員配信に fall-through する欠陥があった。
       // 単一クエリの inner join に置き換え、URL にはタグIDやセミナーIDのみ
       // 乗せることで URL 長問題を回避し、エラーも明示的に伝播させる。
+      // また PostgREST の暗黙的な上限（~1000件）で大量送信時に対象が黙殺
+      // されないよう、1000件ずつ明示ページングで全件取得する。
       type TargetFriend = {
         line_user_id: string
         display_name: string | null
         custom_name: string | null
       }
+      const PAGE_SIZE = 1000
       let targetFriends: TargetFriend[] | null = null
 
       if (targetType === "tag") {
         if (!Array.isArray(targetFilter?.tagIds) || targetFilter.tagIds.length === 0) {
           return NextResponse.json({ error: "タグを選択してください" }, { status: 400 })
         }
-        const { data, error: tagErr } = await supabase
-          .from("friends")
-          .select("line_user_id, display_name, custom_name, friend_tags!inner(tag_id)")
-          .eq("organization_id", orgId)
-          .eq("status", "active")
-          .in("friend_tags.tag_id", targetFilter.tagIds)
-        if (tagErr) throw tagErr
-        const seen = new Set<string>()
         targetFriends = []
-        for (const row of (data || []) as Array<TargetFriend & { friend_tags?: unknown }>) {
-          if (!row.line_user_id || seen.has(row.line_user_id)) continue
-          seen.add(row.line_user_id)
-          targetFriends.push({
-            line_user_id: row.line_user_id,
-            display_name: row.display_name,
-            custom_name: row.custom_name,
-          })
+        const seen = new Set<string>()
+        for (let page = 0; ; page++) {
+          const from = page * PAGE_SIZE
+          const to = from + PAGE_SIZE - 1
+          const { data, error: tagErr } = await supabase
+            .from("friends")
+            .select("id, line_user_id, display_name, custom_name, friend_tags!inner(tag_id)")
+            .eq("organization_id", orgId)
+            .eq("status", "active")
+            .in("friend_tags.tag_id", targetFilter.tagIds)
+            .order("id", { ascending: true })
+            .range(from, to)
+          if (tagErr) throw tagErr
+          const rows = (data || []) as Array<TargetFriend & { id: string; friend_tags?: unknown }>
+          for (const row of rows) {
+            if (!row.line_user_id || seen.has(row.line_user_id)) continue
+            seen.add(row.line_user_id)
+            targetFriends.push({
+              line_user_id: row.line_user_id,
+              display_name: row.display_name,
+              custom_name: row.custom_name,
+            })
+          }
+          if (rows.length < PAGE_SIZE) break
         }
       } else if (targetType === "seminar") {
         if (!targetFilter?.seminarId) {
           return NextResponse.json({ error: "セミナーを選択してください" }, { status: 400 })
         }
-        const { data, error: semErr } = await supabase
-          .from("friends")
-          .select("line_user_id, display_name, custom_name, attendances!inner(seminar_id, status)")
-          .eq("organization_id", orgId)
-          .eq("status", "active")
-          .eq("attendances.seminar_id", targetFilter.seminarId)
-          .neq("attendances.status", "cancelled")
-        if (semErr) throw semErr
-        const seen = new Set<string>()
         targetFriends = []
-        for (const row of (data || []) as Array<TargetFriend & { attendances?: unknown }>) {
-          if (!row.line_user_id || seen.has(row.line_user_id)) continue
-          seen.add(row.line_user_id)
-          targetFriends.push({
-            line_user_id: row.line_user_id,
-            display_name: row.display_name,
-            custom_name: row.custom_name,
-          })
+        const seen = new Set<string>()
+        for (let page = 0; ; page++) {
+          const from = page * PAGE_SIZE
+          const to = from + PAGE_SIZE - 1
+          const { data, error: semErr } = await supabase
+            .from("friends")
+            .select("id, line_user_id, display_name, custom_name, attendances!inner(seminar_id, status)")
+            .eq("organization_id", orgId)
+            .eq("status", "active")
+            .eq("attendances.seminar_id", targetFilter.seminarId)
+            .neq("attendances.status", "cancelled")
+            .order("id", { ascending: true })
+            .range(from, to)
+          if (semErr) throw semErr
+          const rows = (data || []) as Array<TargetFriend & { id: string; attendances?: unknown }>
+          for (const row of rows) {
+            if (!row.line_user_id || seen.has(row.line_user_id)) continue
+            seen.add(row.line_user_id)
+            targetFriends.push({
+              line_user_id: row.line_user_id,
+              display_name: row.display_name,
+              custom_name: row.custom_name,
+            })
+          }
+          if (rows.length < PAGE_SIZE) break
         }
       }
 
@@ -200,22 +219,34 @@ export async function POST(request: NextRequest) {
         // {name}タグがある場合は個別送信でパーソナライズ
         let personalizeFriends: TargetFriend[]
         if (targetFriends === null) {
-          // targetType === "all": 全アクティブ友だちを取得
-          const { data, error: allErr } = await supabase
-            .from("friends")
-            .select("line_user_id, display_name, custom_name")
-            .eq("organization_id", orgId)
-            .eq("status", "active")
-          if (allErr) throw allErr
-          personalizeFriends = (data || []) as TargetFriend[]
+          // targetType === "all": 全アクティブ友だちをページングで取得
+          personalizeFriends = []
+          for (let page = 0; ; page++) {
+            const from = page * PAGE_SIZE
+            const to = from + PAGE_SIZE - 1
+            const { data, error: allErr } = await supabase
+              .from("friends")
+              .select("line_user_id, display_name, custom_name")
+              .eq("organization_id", orgId)
+              .eq("status", "active")
+              .order("id", { ascending: true })
+              .range(from, to)
+            if (allErr) throw allErr
+            const rows = (data || []) as TargetFriend[]
+            personalizeFriends.push(...rows)
+            if (rows.length < PAGE_SIZE) break
+          }
         } else {
           personalizeFriends = targetFriends
         }
 
         if (personalizeFriends.length > 0) {
-          // 10件ずつ並列で個別送信
-          for (let i = 0; i < personalizeFriends.length; i += 10) {
-            const batch = personalizeFriends.slice(i, i + 10)
+          // 並列度30で個別送信。LINE push は 2000 req/sec 程度まで許容されるため
+          // 30並列でも十分安全。旧実装（10並列）では maxDuration=300s の間に
+          // 約1万件で頭打ちになっていたが、3倍程度まで拡張可能。
+          const PERSONALIZE_CONCURRENCY = 30
+          for (let i = 0; i < personalizeFriends.length; i += PERSONALIZE_CONCURRENCY) {
+            const batch = personalizeFriends.slice(i, i + PERSONALIZE_CONCURRENCY)
             const results = await Promise.allSettled(
               batch.map((f) => {
                 const name = f.custom_name || f.display_name || "お客様"
@@ -244,17 +275,25 @@ export async function POST(request: NextRequest) {
         sentCount = count || 0
       } else if (targetFriends.length > 0) {
         // ターゲット配信（名前タグなし）
+        // 500件単位のマルチキャストバッチを 5 並列で送信。10万件規模でも
+        // 概ね10秒前後で捌けるため maxDuration=300s の範囲で完結する。
         const userIds = targetFriends.map((f) => f.line_user_id)
-
-        // 500件ずつバッチ送信
-        for (let i = 0; i < userIds.length; i += 500) {
-          const batch = userIds.slice(i, i + 500)
-          try {
-            await multicast(batch, messages, { accessToken: lineAccount.channel_access_token })
-            sentCount += batch.length
-          } catch {
-            failedCount += batch.length
-          }
+        const BATCH_SIZE = 500
+        const MULTICAST_CONCURRENCY = 5
+        const batches: string[][] = []
+        for (let i = 0; i < userIds.length; i += BATCH_SIZE) {
+          batches.push(userIds.slice(i, i + BATCH_SIZE))
+        }
+        for (let i = 0; i < batches.length; i += MULTICAST_CONCURRENCY) {
+          const group = batches.slice(i, i + MULTICAST_CONCURRENCY)
+          const results = await Promise.allSettled(
+            group.map((batch) => multicast(batch, messages, { accessToken: lineAccount.channel_access_token }))
+          )
+          results.forEach((r, idx) => {
+            const size = group[idx].length
+            if (r.status === "fulfilled") sentCount += size
+            else failedCount += size
+          })
         }
       }
 
