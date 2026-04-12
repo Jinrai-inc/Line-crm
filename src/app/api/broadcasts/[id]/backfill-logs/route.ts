@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getAuthenticatedOrgId } from "@/lib/api/auth"
+import { createAdminClient } from "@/lib/supabase/server"
 
 export const maxDuration = 300
 
@@ -23,12 +24,17 @@ export async function POST(
     const { id } = await params
     const auth = await getAuthenticatedOrgId()
     if (!auth.ok) return auth.response
-    const { supabase, orgId } = auth
+    const { orgId } = auth
+
+    // サーバー側の DB 書き込みは RLS をバイパスするため admin クライアントを使う。
+    // webhook 由来のログ挿入と整合を取り、RLS のサブクエリ評価が絡む silent failure を回避する。
+    // 組織境界は明示的な .eq("organization_id", orgId) で担保している。
+    const supabase = createAdminClient()
 
     // 1. 配信レコード取得
     const { data: broadcast, error: bErr } = await supabase
       .from("broadcasts")
-      .select("id, title, message_text, target_type, target_filter")
+      .select("id, title, message_text, target_type, target_filter, sent_at, created_at")
       .eq("id", id)
       .eq("organization_id", orgId)
       .single()
@@ -44,13 +50,20 @@ export async function POST(
     const targetFilter = (broadcast as { target_filter: { tagIds?: string[]; seminarId?: string } | null }).target_filter
     const messageText = (broadcast as { message_text: string | null }).message_text
     const title = (broadcast as { title: string | null }).title
+    const broadcastSentAt =
+      (broadcast as { sent_at: string | null }).sent_at ||
+      (broadcast as { created_at: string }).created_at
 
-    // 2. 対象友だち一覧を復元（配信時と同じロジック）
+    // 2. 対象友だち一覧を復元
+    // status フィルタは掛けない：過去配信時点で active だった友だちが
+    // その後 blocked に flip されていても履歴に反映させるため。
+    // 代わりに first_added_at <= broadcast.sent_at で、配信より後に
+    // 追加された友だちを除外する。
     let friendQuery = supabase
       .from("friends")
-      .select("id, line_user_id")
+      .select("id, line_user_id, first_added_at")
       .eq("organization_id", orgId)
-      .eq("status", "active")
+      .lte("first_added_at", broadcastSentAt)
 
     if (
       targetType === "tag" &&
@@ -164,21 +177,44 @@ export async function POST(
 
     // 5. 500件ずつ bulk insert
     let insertedCount = 0
+    let failedCount = 0
+    const insertErrors: string[] = []
     for (let i = 0; i < rows.length; i += 500) {
       const batch = rows.slice(i, i + 500)
       const { error } = await supabase.from("message_logs").insert(batch)
       if (error) {
         console.error("backfill-logs insert error:", error)
+        failedCount += batch.length
+        const msg =
+          typeof error === "object" && error !== null && "message" in error
+            ? String((error as { message: unknown }).message)
+            : String(error)
+        if (!insertErrors.includes(msg)) insertErrors.push(msg)
       } else {
         insertedCount += batch.length
       }
+    }
+
+    // 失敗があった場合はクライアントに surface する
+    if (insertedCount === 0 && failedCount > 0) {
+      return NextResponse.json(
+        {
+          error: `履歴の反映に失敗しました: ${insertErrors.join(" / ")}`,
+          insertedCount: 0,
+          skippedCount,
+          targetCount: targetFriends.length,
+          failedCount,
+        },
+        { status: 500 }
+      )
     }
 
     return NextResponse.json({
       insertedCount,
       skippedCount,
       targetCount: targetFriends.length,
-      message: `${insertedCount}件を履歴に反映しました${skippedCount > 0 ? `（${skippedCount}件は既に反映済み）` : ""}`,
+      failedCount,
+      message: `${insertedCount}件を履歴に反映しました${skippedCount > 0 ? `（${skippedCount}件は既に反映済み）` : ""}${failedCount > 0 ? `（${failedCount}件は失敗）` : ""}`,
     })
   } catch (error) {
     console.error("backfill-logs error:", error)

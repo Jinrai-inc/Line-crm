@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import type { SupabaseClient } from "@supabase/supabase-js"
 import { getAuthenticatedOrgId } from "@/lib/api/auth"
+import { createAdminClient } from "@/lib/supabase/server"
 import { pushMessage, broadcast } from "@/lib/line/client"
 import { createFileDeliveryMessage } from "@/lib/line/flex-templates"
 
@@ -92,7 +93,12 @@ export async function POST(request: NextRequest) {
   try {
     const auth = await getAuthenticatedOrgId()
     if (!auth.ok) return auth.response
-    const { supabase, orgId, userId } = auth
+    const { orgId, userId } = auth
+
+    // サーバー側の DB 書き込みは admin クライアントで行う
+    // （webhook 由来のログ挿入と揃え、RLS による silent failure を避けるため）。
+    // 組織境界は .eq("organization_id", orgId) で明示的に担保している。
+    const supabase = createAdminClient()
 
     const { title, messageText, messageType, imageUrl, previewImageUrl, fileName, targetType, targetFilter, scheduledAt } = await request.json()
     if (messageType === "image" || messageType === "video") {

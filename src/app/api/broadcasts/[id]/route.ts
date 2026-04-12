@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getAuthenticatedOrgId } from "@/lib/api/auth"
+import { createAdminClient } from "@/lib/supabase/server"
 
 export const maxDuration = 60
 
@@ -39,7 +40,11 @@ export async function GET(
     const { id } = await params
     const auth = await getAuthenticatedOrgId()
     if (!auth.ok) return auth.response
-    const { supabase, orgId } = auth
+    const { orgId } = auth
+
+    // 読み書き共に admin クライアントで行う（webhook の message_logs
+    // 挿入と整合を取る）。組織境界は .eq("organization_id", orgId) で担保。
+    const supabase = createAdminClient()
 
     // 1. 配信レコード取得
     const { data: broadcastData, error: bErr } = await supabase

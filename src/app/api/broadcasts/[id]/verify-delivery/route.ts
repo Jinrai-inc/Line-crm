@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getAuthenticatedOrgId } from "@/lib/api/auth"
+import { createAdminClient } from "@/lib/supabase/server"
 import { getProfile } from "@/lib/line/client"
 
 export const maxDuration = 300
@@ -27,7 +28,11 @@ export async function POST(
     const { id } = await params
     const auth = await getAuthenticatedOrgId()
     if (!auth.ok) return auth.response
-    const { supabase, orgId } = auth
+    const { orgId } = auth
+
+    // サーバー側の DB 読み書きは admin クライアントで行う（RLS バイパス）。
+    // 組織境界は明示的な .eq("organization_id", orgId) で担保。
+    const supabase = createAdminClient()
 
     // LINE 設定取得
     const { data: lineAccount } = await supabase
