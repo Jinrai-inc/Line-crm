@@ -14,12 +14,15 @@ export const maxDuration = 300
 // はブロック or 友だち解除されており、過去配信の時点で既に受け取れて
 // いなかった可能性が高い、という判定材料になる。
 //
-// 到達不可と判定されたユーザーは friends.status = "blocked" に更新する
-// （次回以降の配信対象から自動除外され、「141人送信済み」のような
-// 嘘の数字が出る原因を根本から潰す）。
+// 到達不可と判定されたユーザーには「送信エラー」タグを自動付与する
+// （friend_tags テーブルへ upsert）。タグに統一することで、
+//   - 次回以降の配信対象から自動除外されない（削除・再送の柔軟性が高い）
+//   - 友だち一覧で「送信エラー」タグで絞り込んで一括対応できる
+//   - 誤判定時も簡単に外せる
+// というメリットがある。
 //
 // メッセージは一切送信しない。LINE API は getProfile のみ、DB は
-// 読み取りと friends.status 更新のみ。
+// 読み取りとタグ付与のみ。
 export async function POST(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -97,7 +100,8 @@ export async function POST(
           totalChecked: 0,
           reachableCount: 0,
           unreachableCount: 0,
-          blockedFlippedCount: 0,
+          taggedCount: 0,
+          errorTagName: "送信エラー",
           unreachable: [],
         })
       }
@@ -117,7 +121,8 @@ export async function POST(
           totalChecked: 0,
           reachableCount: 0,
           unreachableCount: 0,
-          blockedFlippedCount: 0,
+          taggedCount: 0,
+          errorTagName: "送信エラー",
           unreachable: [],
         })
       }
@@ -136,7 +141,8 @@ export async function POST(
         totalChecked: 0,
         reachableCount: 0,
         unreachableCount: 0,
-        blockedFlippedCount: 0,
+        taggedCount: 0,
+        errorTagName: "送信エラー",
         unreachable: [],
       })
     }
@@ -178,24 +184,63 @@ export async function POST(
       })
     }
 
-    // 4. 到達不可と判定された友だちは status を "blocked" に更新
-    // （次回配信の対象から外し、再発防止）
-    let blockedFlippedCount = 0
+    // 4. 到達不可と判定された友だちに「送信エラー」タグを付与する
+    // ブロックステータスは触らない（次回配信から自動除外されるのは避けたい）。
+    // タグなら後から一覧で確認でき、削除も簡単。
+    const ERROR_TAG_NAME = "送信エラー"
+    let taggedCount = 0
+    let errorTagId: string | null = null
+
     if (unreachable.length > 0) {
-      const unreachableIds = unreachable.map((u) => u.id)
-      // 500件ずつ update
-      for (let i = 0; i < unreachableIds.length; i += 500) {
-        const batch = unreachableIds.slice(i, i + 500)
-        const { error } = await supabase
-          .from("friends")
-          .update({ status: "blocked" })
-          .in("id", batch)
+      // 4-1. 「送信エラー」タグを取得 or 作成
+      try {
+        const { data: existingTag } = await supabase
+          .from("tags")
+          .select("id")
           .eq("organization_id", orgId)
-          .eq("status", "active") // 既に blocked なら触らない
-        if (error) {
-          console.error("verify-delivery: status update failed", error)
+          .eq("name", ERROR_TAG_NAME)
+          .maybeSingle()
+
+        if (existingTag) {
+          errorTagId = (existingTag as { id: string }).id
         } else {
-          blockedFlippedCount += batch.length
+          const { data: newTag, error: tagInsertErr } = await supabase
+            .from("tags")
+            .insert({
+              organization_id: orgId,
+              name: ERROR_TAG_NAME,
+              color: "#EF4444", // 赤系（エラー表示）
+            })
+            .select("id")
+            .single()
+          if (tagInsertErr) {
+            console.error("verify-delivery: error tag create failed", tagInsertErr)
+          } else if (newTag) {
+            errorTagId = (newTag as { id: string }).id
+          }
+        }
+      } catch (err) {
+        console.error("verify-delivery: error tag lookup threw", err)
+      }
+
+      // 4-2. friend_tags に bulk upsert
+      if (errorTagId) {
+        const friendTagRows = unreachable.map((u) => ({
+          friend_id: u.id,
+          tag_id: errorTagId,
+          auto_assigned: true,
+        }))
+        // 500件ずつ upsert（onConflict で重複時はスキップ）
+        for (let i = 0; i < friendTagRows.length; i += 500) {
+          const batch = friendTagRows.slice(i, i + 500)
+          const { error } = await supabase
+            .from("friend_tags")
+            .upsert(batch, { onConflict: "friend_id,tag_id" })
+          if (error) {
+            console.error("verify-delivery: friend_tags upsert failed", error)
+          } else {
+            taggedCount += batch.length
+          }
         }
       }
     }
@@ -204,7 +249,8 @@ export async function POST(
       totalChecked: targetFriends.length,
       reachableCount,
       unreachableCount: unreachable.length,
-      blockedFlippedCount,
+      taggedCount,
+      errorTagName: ERROR_TAG_NAME,
       unreachable,
     })
   } catch (error) {

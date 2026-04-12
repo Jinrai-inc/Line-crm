@@ -69,7 +69,8 @@ interface VerifyResult {
   totalChecked: number
   reachableCount: number
   unreachableCount: number
-  blockedFlippedCount: number
+  taggedCount: number
+  errorTagName: string
   unreachable: Array<{
     id: string
     line_user_id: string
@@ -151,7 +152,7 @@ export default function BroadcastDetailPage({
   // 対象友だちの到達可否を LINE API で検証
   const handleVerify = async () => {
     if (verifying) return
-    if (!confirm("LINE の getProfile API で対象友だちの到達可否を確認します。\n到達不可と判定された友だちは自動的にステータスを「ブロック」に更新します。\nメッセージは送信しません。実行しますか？")) return
+    if (!confirm("LINE の getProfile API で対象友だちの到達可否を確認します。\n到達不可と判定された友だちには自動的に「送信エラー」タグを付与します（ステータスは変更しません）。\nメッセージは送信しません。実行しますか？")) return
     setVerifying(true)
     setVerifyResult(null)
     try {
@@ -337,7 +338,7 @@ export default function BroadcastDetailPage({
           </div>
           <div className="text-xs text-gray-400 leading-relaxed">
             <p>・「履歴に反映」は過去の配信を友だち個別のメッセージ履歴に復元します。重複は自動でスキップされます。</p>
-            <p>・「到達確認」は LINE の getProfile で現在の到達可否を検証し、到達不可の友だちを自動で「ブロック」ステータスに更新します（メッセージは送信しません）。</p>
+            <p>・「到達確認」は LINE の getProfile で現在の到達可否を検証し、到達不可の友だちに自動で「送信エラー」タグを付与します（ステータスは変更しません、メッセージは送信しません）。</p>
           </div>
         </CardContent>
       </Card>
@@ -364,9 +365,9 @@ export default function BroadcastDetailPage({
                 <p className="text-xs text-gray-500">到達不可</p>
               </div>
             </div>
-            {verifyResult.blockedFlippedCount > 0 && (
+            {verifyResult.taggedCount > 0 && (
               <p className="text-xs text-gray-600 text-center">
-                {verifyResult.blockedFlippedCount}件のステータスを「ブロック」に更新しました
+                {verifyResult.taggedCount}件に「{verifyResult.errorTagName}」タグを付与しました
               </p>
             )}
             {verifyResult.unreachable.length > 0 && (
