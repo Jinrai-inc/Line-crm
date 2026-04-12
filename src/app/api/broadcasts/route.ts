@@ -155,6 +155,21 @@ export async function POST(request: NextRequest) {
       if (!messageText && !imageUrl) return NextResponse.json({ error: "メッセージ本文またはファイルが必須です" }, { status: 400 })
     }
 
+    // タグ指定配信のバリデーション: 含む/除外/legacy のいずれか一つ以上が必要
+    // これがないと「全 active 友だちが対象」になってしまい意図しない誤配信のリスク
+    if (targetType === "tag") {
+      const tf = (targetFilter || {}) as { tagIds?: string[]; includeTagIds?: string[]; excludeTagIds?: string[] }
+      const hasInclude = (tf.includeTagIds && tf.includeTagIds.length > 0)
+        || (tf.tagIds && tf.tagIds.length > 0)
+      const hasExclude = tf.excludeTagIds && tf.excludeTagIds.length > 0
+      if (!hasInclude && !hasExclude) {
+        return NextResponse.json(
+          { error: "タグ指定配信には、含むタグまたは除外タグを 1 つ以上指定してください" },
+          { status: 400 }
+        )
+      }
+    }
+
     // LINE設定取得
     const { data: lineAccount } = await supabase
       .from("line_accounts")

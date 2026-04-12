@@ -144,7 +144,10 @@ export default function BroadcastsPage() {
   const [previewImageUrl, setPreviewImageUrl] = useState("")
   const [uploadedFile, setUploadedFile] = useState<{ url: string; fileName: string; fileSize: number; mimeType: string } | null>(null)
   const [targetType, setTargetType] = useState("all")
-  const [selectedTagIds, setSelectedTagIds] = useState<string[]>([])
+  // 含むタグ（AND 条件）: 選択したタグを **全て** 持つ友だちが対象
+  const [includeTagIds, setIncludeTagIds] = useState<string[]>([])
+  // 除外タグ（NOT 条件）: 選択したタグを **いずれか** 持つ友だちは対象外
+  const [excludeTagIds, setExcludeTagIds] = useState<string[]>([])
   const [selectedSeminarId, setSelectedSeminarId] = useState("")
   const [tags, setTags] = useState<TagData[]>([])
   const [seminars, setSeminars] = useState<SeminarData[]>([])
@@ -243,7 +246,8 @@ export default function BroadcastsPage() {
     setPreviewImageUrl("")
     setUploadedFile(null)
     setTargetType("all")
-    setSelectedTagIds([])
+    setIncludeTagIds([])
+    setExcludeTagIds([])
     setSelectedSeminarId("")
     setAttachSurvey(false)
     setSelectedSurveyId("")
@@ -251,7 +255,13 @@ export default function BroadcastsPage() {
   }
 
   const buildTargetFilter = () => {
-    if (targetType === "tag") return { tagIds: selectedTagIds }
+    if (targetType === "tag") {
+      return {
+        // 含むタグ（AND）と除外タグ（NOT）を新フォーマットで送る
+        includeTagIds,
+        excludeTagIds,
+      }
+    }
     if (targetType === "seminar") return { seminarId: selectedSeminarId }
     return {}
   }
@@ -333,10 +343,21 @@ export default function BroadcastsPage() {
     }
   }
 
-  const toggleTagSelection = (tagId: string) => {
-    setSelectedTagIds((prev) =>
+  // 含むタグ（AND）の選択をトグル
+  // 除外タグに同じ ID が入っている場合は自動で外す（矛盾防止）
+  const toggleIncludeTag = (tagId: string) => {
+    setIncludeTagIds((prev) =>
       prev.includes(tagId) ? prev.filter((id) => id !== tagId) : [...prev, tagId]
     )
+    setExcludeTagIds((prev) => prev.filter((id) => id !== tagId))
+  }
+  // 除外タグ（NOT）の選択をトグル
+  // 含むタグに同じ ID が入っている場合は自動で外す（矛盾防止）
+  const toggleExcludeTag = (tagId: string) => {
+    setExcludeTagIds((prev) =>
+      prev.includes(tagId) ? prev.filter((id) => id !== tagId) : [...prev, tagId]
+    )
+    setIncludeTagIds((prev) => prev.filter((id) => id !== tagId))
   }
 
   const hasContent = messageType === "text"
@@ -349,7 +370,8 @@ export default function BroadcastsPage() {
     title.trim() &&
     hasContent &&
     (targetType === "all" ||
-      (targetType === "tag" && selectedTagIds.length > 0) ||
+      // タグ条件: 含むタグ または 除外タグ のどちらか1つ以上が指定されている必要がある
+      (targetType === "tag" && (includeTagIds.length > 0 || excludeTagIds.length > 0)) ||
       (targetType === "seminar" && selectedSeminarId)) &&
     (!attachSurvey || !!selectedSurveyId)
 
@@ -769,36 +791,113 @@ export default function BroadcastsPage() {
                 </Select>
               </div>
 
-              {/* タグ選択 */}
+              {/* タグ選択 — 含む（AND）/ 除外（NOT）の2セクションに分離 */}
               {targetType === "tag" && (
-                <div className="space-y-2">
-                  <Label>タグを選択（複数可）</Label>
-                  <div className="flex flex-wrap gap-2">
-                    {tags.length === 0 ? (
-                      <p className="text-sm text-gray-500">
-                        タグがまだ作成されていません
-                      </p>
-                    ) : (
-                      tags.map((tag) => (
-                        <button
-                          key={tag.id}
-                          type="button"
-                          onClick={() => toggleTagSelection(tag.id)}
-                          className={`inline-flex items-center rounded-md px-2.5 py-1 text-xs font-semibold transition-all border-2 ${
-                            selectedTagIds.includes(tag.id)
-                              ? "border-gray-900 shadow-sm"
-                              : "border-transparent opacity-60 hover:opacity-100"
-                          }`}
-                          style={{
-                            backgroundColor: tag.color,
-                            color: "white",
-                          }}
-                        >
-                          {tag.name}
-                        </button>
-                      ))
-                    )}
-                  </div>
+                <div className="space-y-4 rounded-lg border bg-gray-50/50 p-4">
+                  {tags.length === 0 ? (
+                    <p className="text-sm text-gray-500">
+                      タグがまだ作成されていません
+                    </p>
+                  ) : (
+                    <>
+                      {/* 含むタグ (AND) */}
+                      <div className="space-y-2">
+                        <Label className="text-sm font-semibold text-gray-700 flex items-center gap-1.5">
+                          <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#06C755]" />
+                          含むタグ（選択した全てを持つ人）
+                        </Label>
+                        <div className="flex flex-wrap gap-2">
+                          {tags.map((tag) => {
+                            const selected = includeTagIds.includes(tag.id)
+                            return (
+                              <button
+                                key={`inc-${tag.id}`}
+                                type="button"
+                                onClick={() => toggleIncludeTag(tag.id)}
+                                className={`inline-flex items-center rounded-md px-2.5 py-1 text-xs font-semibold transition-all border-2 ${
+                                  selected
+                                    ? "border-[#06C755] shadow-sm"
+                                    : "border-transparent opacity-50 hover:opacity-100"
+                                }`}
+                                style={{
+                                  backgroundColor: tag.color,
+                                  color: "white",
+                                }}
+                              >
+                                {selected && "✓ "}
+                                {tag.name}
+                              </button>
+                            )
+                          })}
+                        </div>
+                      </div>
+
+                      {/* 除外タグ (NOT) */}
+                      <div className="space-y-2 pt-3 border-t border-gray-200">
+                        <Label className="text-sm font-semibold text-gray-700 flex items-center gap-1.5">
+                          <span className="inline-block w-1.5 h-1.5 rounded-full bg-red-500" />
+                          除外するタグ（選択したいずれかを持つ人は対象外）
+                        </Label>
+                        <div className="flex flex-wrap gap-2">
+                          {tags.map((tag) => {
+                            const selected = excludeTagIds.includes(tag.id)
+                            return (
+                              <button
+                                key={`exc-${tag.id}`}
+                                type="button"
+                                onClick={() => toggleExcludeTag(tag.id)}
+                                className={`inline-flex items-center rounded-md px-2.5 py-1 text-xs font-semibold transition-all border-2 ${
+                                  selected
+                                    ? "border-red-500 shadow-sm line-through"
+                                    : "border-transparent opacity-50 hover:opacity-100"
+                                }`}
+                                style={{
+                                  backgroundColor: tag.color,
+                                  color: "white",
+                                }}
+                              >
+                                {selected && "✕ "}
+                                {tag.name}
+                              </button>
+                            )
+                          })}
+                        </div>
+                      </div>
+
+                      {/* 条件サマリー */}
+                      <div className="pt-2 text-xs text-gray-600 border-t border-gray-200">
+                        <p className="font-semibold mb-1">配信条件:</p>
+                        {includeTagIds.length === 0 && excludeTagIds.length === 0 ? (
+                          <p className="text-gray-400">
+                            含むタグまたは除外タグを 1 つ以上選択してください
+                          </p>
+                        ) : (
+                          <div className="space-y-0.5">
+                            {includeTagIds.length > 0 && (
+                              <p>
+                                ・以下のタグを <span className="font-bold">全て</span>{" "}
+                                持つ人:{" "}
+                                {tags
+                                  .filter((t) => includeTagIds.includes(t.id))
+                                  .map((t) => t.name)
+                                  .join(" かつ ")}
+                              </p>
+                            )}
+                            {excludeTagIds.length > 0 && (
+                              <p>
+                                ・かつ、以下のタグを{" "}
+                                <span className="font-bold">一つも持たない</span> 人:{" "}
+                                {tags
+                                  .filter((t) => excludeTagIds.includes(t.id))
+                                  .map((t) => t.name)
+                                  .join(" / ")}
+                              </p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
 
