@@ -57,147 +57,230 @@ async function handleFollow(
   const userId = event.source.userId
   if (!userId) return
 
-  // LINEプロフィール取得
-  const profile = await getProfile(userId, {
-    accessToken: context.channelAccessToken,
-  })
+  // LINEプロフィール取得（失敗した場合はここで終了）
+  let profile: { displayName: string; pictureUrl?: string }
+  try {
+    profile = await getProfile(userId, {
+      accessToken: context.channelAccessToken,
+    })
+  } catch (err) {
+    console.error("handleFollow: getProfile failed", err)
+    return
+  }
 
-  // 友だちをUPSERT
-  await supabase.from("friends").upsert(
-    {
-      organization_id: context.organizationId,
-      line_account_id: context.lineAccountId,
-      line_user_id: userId,
-      display_name: profile.displayName,
-      picture_url: profile.pictureUrl,
-      status: "active",
-      first_added_at: new Date().toISOString(),
-    },
-    { onConflict: "organization_id,line_user_id" }
-  )
-
-  // 「新規」タグを自動付与
-  const { data: tag } = await supabase
-    .from("tags")
-    .select("id")
-    .eq("organization_id", context.organizationId)
-    .eq("name", "新規")
-    .single()
-
-  if (tag) {
-    const { data: friend } = await supabase
+  // 既存の友だちレコードを先に確認する
+  // 「これから登録される方にのみ挨拶を送る／既存の友だち（再フォロー含む）には送らない」
+  // という要件を満たすため、必ず upsert より先にチェックする。
+  //
+  // 既存チェック自体が失敗した場合は安全側に倒して isNewFriend=false として扱い、
+  // 挨拶メッセージが誤って既存の友だちに届くのを防ぐ。
+  let isNewFriend = false
+  try {
+    const { data: existing, error: existingErr } = await supabase
       .from("friends")
       .select("id")
       .eq("organization_id", context.organizationId)
       .eq("line_user_id", userId)
-      .single()
+      .maybeSingle()
 
-    if (friend) {
-      await supabase.from("friend_tags").upsert(
-        {
-          friend_id: friend.id,
-          tag_id: tag.id,
-          auto_assigned: true,
-        },
-        { onConflict: "friend_id,tag_id" }
-      )
+    if (existingErr) {
+      console.error("handleFollow: existing friend lookup failed", existingErr)
+      isNewFriend = false
+    } else {
+      isNewFriend = !existing
     }
+  } catch (err) {
+    console.error("handleFollow: existing friend lookup threw", err)
+    isNewFriend = false
+  }
+
+  // 友だちレコードの作成 or 更新
+  // 既存の場合は first_added_at を維持し、ステータスとプロフィール情報だけ更新する。
+  try {
+    if (isNewFriend) {
+      await supabase.from("friends").insert({
+        organization_id: context.organizationId,
+        line_account_id: context.lineAccountId,
+        line_user_id: userId,
+        display_name: profile.displayName,
+        picture_url: profile.pictureUrl,
+        status: "active",
+        first_added_at: new Date().toISOString(),
+      })
+    } else {
+      await supabase
+        .from("friends")
+        .update({
+          status: "active",
+          display_name: profile.displayName,
+          picture_url: profile.pictureUrl,
+        })
+        .eq("organization_id", context.organizationId)
+        .eq("line_user_id", userId)
+    }
+  } catch (err) {
+    console.error("handleFollow: friend upsert failed", err)
+  }
+
+  // follow イベントのメッセージログは新規/既存に関係なく記録する
+  try {
+    await supabase.from("message_logs").insert({
+      organization_id: context.organizationId,
+      line_user_id: userId,
+      event_type: "follow",
+      raw_event: JSON.parse(JSON.stringify(event)),
+    })
+  } catch (err) {
+    console.error("handleFollow: message_logs insert failed", err)
+  }
+
+  // 既存の友だち（再フォロー等）には挨拶・自動タグ・フォローアップ・アンケート・
+  // ステップ配信を一切行わない。ここで早期 return する。
+  if (!isNewFriend) return
+
+  // ========================================================================
+  // ここから下は「本当に新規に友だち追加した人」に対してのみ実行される。
+  // ========================================================================
+
+  // 「新規」タグを自動付与
+  try {
+    const { data: tag } = await supabase
+      .from("tags")
+      .select("id")
+      .eq("organization_id", context.organizationId)
+      .eq("name", "新規")
+      .maybeSingle()
+
+    if (tag) {
+      const { data: friend } = await supabase
+        .from("friends")
+        .select("id")
+        .eq("organization_id", context.organizationId)
+        .eq("line_user_id", userId)
+        .maybeSingle()
+
+      if (friend) {
+        await supabase.from("friend_tags").upsert(
+          {
+            friend_id: friend.id,
+            tag_id: tag.id,
+            auto_assigned: true,
+          },
+          { onConflict: "friend_id,tag_id" }
+        )
+      }
+    }
+  } catch (err) {
+    console.error("handleFollow: 新規 tag assign failed", err)
   }
 
   // 時間制限付き自動タグルールのチェック
-  const { data: autoTagRules } = await (supabase
-    .from("auto_tag_rules" as never)
-    .select("*")
-    .eq("organization_id" as never, context.organizationId)
-    .eq("enabled" as never, true) as unknown as Promise<{
-      data: Array<{
-        id: string; tag_id: string | null; tag_name: string;
-        duration_minutes: number | null; schedule_type: string | null;
-        start_at: string | null; end_at: string | null; created_at: string
-      }> | null
-      error: unknown
-    }>)
+  try {
+    const { data: autoTagRules } = await (supabase
+      .from("auto_tag_rules" as never)
+      .select("*")
+      .eq("organization_id" as never, context.organizationId)
+      .eq("enabled" as never, true) as unknown as Promise<{
+        data: Array<{
+          id: string; tag_id: string | null; tag_name: string;
+          duration_minutes: number | null; schedule_type: string | null;
+          start_at: string | null; end_at: string | null; created_at: string
+        }> | null
+        error: unknown
+      }>)
 
-  if (autoTagRules && autoTagRules.length > 0) {
-    const now = new Date()
-    const { data: followFriend } = await supabase
-      .from("friends")
-      .select("id")
-      .eq("organization_id", context.organizationId)
-      .eq("line_user_id", userId)
-      .single()
+    if (autoTagRules && autoTagRules.length > 0) {
+      const now = new Date()
+      const { data: followFriend } = await supabase
+        .from("friends")
+        .select("id")
+        .eq("organization_id", context.organizationId)
+        .eq("line_user_id", userId)
+        .maybeSingle()
 
-    if (followFriend) {
-      for (const rule of autoTagRules) {
-        let isWithinWindow = false
+      if (followFriend) {
+        for (const rule of autoTagRules) {
+          let isWithinWindow = false
 
-        if (rule.schedule_type === "scheduled") {
-          // 指定時間帯モード: start_at〜end_atの間か判定
-          if (rule.start_at && rule.end_at) {
-            const startAt = new Date(rule.start_at)
-            const endAt = new Date(rule.end_at)
-            isWithinWindow = now >= startAt && now <= endAt
-          }
-        } else {
-          // 従来の期間モード: created_at + duration_minutes
-          if (rule.duration_minutes) {
-            const ruleCreated = new Date(rule.created_at)
-            const expiresAt = new Date(ruleCreated.getTime() + rule.duration_minutes * 60 * 1000)
-            isWithinWindow = now <= expiresAt
-          }
-        }
-
-        if (isWithinWindow) {
-          // ルール有効期間内 → タグ付与
-          let ruleTagId = rule.tag_id
-          if (!ruleTagId) {
-            const { data: existingTag } = await supabase
-              .from("tags")
-              .select("id")
-              .eq("organization_id", context.organizationId)
-              .eq("name", rule.tag_name)
-              .single()
-            if (existingTag) {
-              ruleTagId = existingTag.id
-            } else {
-              const { data: newTag } = await supabase
-                .from("tags")
-                .insert({ organization_id: context.organizationId, name: rule.tag_name })
-                .select("id")
-                .single()
-              ruleTagId = newTag?.id || null
+          if (rule.schedule_type === "scheduled") {
+            // 指定時間帯モード: start_at〜end_atの間か判定
+            if (rule.start_at && rule.end_at) {
+              const startAt = new Date(rule.start_at)
+              const endAt = new Date(rule.end_at)
+              isWithinWindow = now >= startAt && now <= endAt
+            }
+          } else {
+            // 従来の期間モード: created_at + duration_minutes
+            if (rule.duration_minutes) {
+              const ruleCreated = new Date(rule.created_at)
+              const expiresAt = new Date(ruleCreated.getTime() + rule.duration_minutes * 60 * 1000)
+              isWithinWindow = now <= expiresAt
             }
           }
-          if (ruleTagId) {
-            await supabase.from("friend_tags").upsert(
-              { friend_id: followFriend.id, tag_id: ruleTagId, auto_assigned: true },
-              { onConflict: "friend_id,tag_id" }
-            )
+
+          if (isWithinWindow) {
+            // ルール有効期間内 → タグ付与
+            let ruleTagId = rule.tag_id
+            if (!ruleTagId) {
+              const { data: existingTag } = await supabase
+                .from("tags")
+                .select("id")
+                .eq("organization_id", context.organizationId)
+                .eq("name", rule.tag_name)
+                .maybeSingle()
+              if (existingTag) {
+                ruleTagId = existingTag.id
+              } else {
+                const { data: newTag } = await supabase
+                  .from("tags")
+                  .insert({ organization_id: context.organizationId, name: rule.tag_name })
+                  .select("id")
+                  .single()
+                ruleTagId = newTag?.id || null
+              }
+            }
+            if (ruleTagId) {
+              await supabase.from("friend_tags").upsert(
+                { friend_id: followFriend.id, tag_id: ruleTagId, auto_assigned: true },
+                { onConflict: "friend_id,tag_id" }
+              )
+            }
           }
         }
       }
     }
+  } catch (err) {
+    console.error("handleFollow: auto tag rules failed", err)
   }
 
   // ウェルカムメッセージ送信（管理画面の設定を使用）
-  if (event.replyToken) {
-    const { data: greetingSettings } = await (supabase
-      .from("greeting_settings" as never)
-      .select("*")
-      .eq("organization_id" as never, context.organizationId)
-      .single() as unknown as Promise<{
-        data: {
-          enabled: boolean; message: string | null;
-          schedule_enabled: boolean; schedule_start: string | null;
-          schedule_end: string | null; schedule_message: string | null;
-          welcome_survey_id: string | null;
-          schedule_survey_id: string | null;
-          follow_up_messages: string[] | null;
-        } | null
-        error: unknown
-      }>)
+  // greeting_settings テーブルの読み込みや reply の失敗で handleFollow 全体が
+  // 落ちないよう、全体を try/catch で囲う。reply が失敗しても push で救う。
+  try {
+    let gs: {
+      enabled: boolean; message: string | null;
+      schedule_enabled: boolean; schedule_start: string | null;
+      schedule_end: string | null; schedule_message: string | null;
+      welcome_survey_id: string | null;
+      schedule_survey_id: string | null;
+      follow_up_messages: string[] | null;
+    } | null = null
 
-    const gs = greetingSettings
+    try {
+      const { data: greetingSettings } = await (supabase
+        .from("greeting_settings" as never)
+        .select("*")
+        .eq("organization_id" as never, context.organizationId)
+        .maybeSingle() as unknown as Promise<{
+          data: typeof gs
+          error: unknown
+        }>)
+      gs = greetingSettings
+    } catch (err) {
+      console.error("handleFollow: greeting_settings lookup failed", err)
+      gs = null
+    }
+
     let greetingDisabled = false
     let customMessage: string | null = null
     let isScheduleActive = false
@@ -224,18 +307,32 @@ async function handleFollow(
     }
 
     if (!greetingDisabled) {
-      if (customMessage) {
-        await replyMessage(
-          event.replyToken,
-          [{ type: "text", text: replaceMessageTags(customMessage, profile.displayName) }],
-          { accessToken: context.channelAccessToken }
-        )
-      } else {
-        await replyMessage(
-          event.replyToken,
-          [createWelcomeMessage(context.channelName)],
-          { accessToken: context.channelAccessToken }
-        )
+      const welcomeMessages: unknown[] = customMessage
+        ? [{ type: "text", text: replaceMessageTags(customMessage, profile.displayName) }]
+        : [createWelcomeMessage(context.channelName)]
+
+      let sent = false
+      if (event.replyToken) {
+        try {
+          await replyMessage(
+            event.replyToken,
+            welcomeMessages,
+            { accessToken: context.channelAccessToken }
+          )
+          sent = true
+        } catch (err) {
+          console.error("handleFollow: welcome replyMessage failed, falling back to push", err)
+        }
+      }
+      // reply が無い or 失敗した場合は push でフォールバック
+      if (!sent) {
+        try {
+          await pushMessage(userId, welcomeMessages, {
+            accessToken: context.channelAccessToken,
+          })
+        } catch (err) {
+          console.error("handleFollow: welcome pushMessage fallback failed", err)
+        }
       }
     }
 
@@ -247,8 +344,8 @@ async function handleFollow(
             await pushMessage(userId, [{ type: "text", text: replaceMessageTags(msg, profile.displayName) }], {
               accessToken: context.channelAccessToken,
             })
-          } catch {
-            // フォローアップメッセージ送信失敗は無視
+          } catch (err) {
+            console.error("handleFollow: follow-up push failed", err)
           }
         }
       }
@@ -262,7 +359,7 @@ async function handleFollow(
           .from("surveys" as never)
           .select("*")
           .eq("id" as never, activeSurveyId)
-          .single() as unknown as Promise<{
+          .maybeSingle() as unknown as Promise<{
             data: { id: string; title: string; questions: string } | null
             error: unknown
           }>)
@@ -286,10 +383,12 @@ async function handleFollow(
             })
           }
         }
-      } catch {
-        // ウェルカムアンケート送信失敗は無視
+      } catch (err) {
+        console.error("handleFollow: welcome survey send failed", err)
       }
     }
+  } catch (err) {
+    console.error("handleFollow: welcome flow failed", err)
   }
 
   // ステップ配信キューの登録
@@ -298,7 +397,7 @@ async function handleFollow(
       .from("step_message_settings" as never)
       .select("*")
       .eq("organization_id" as never, context.organizationId)
-      .single() as unknown as Promise<{
+      .maybeSingle() as unknown as Promise<{
         data: {
           enabled: boolean
           steps: Array<{ delay_days: number; delay_hours: number; message: string; enabled: boolean }>
@@ -312,7 +411,7 @@ async function handleFollow(
         .select("id")
         .eq("organization_id", context.organizationId)
         .eq("line_user_id", userId)
-        .single()
+        .maybeSingle()
 
       if (friendForStep) {
         const now = new Date()
@@ -338,17 +437,9 @@ async function handleFollow(
         }
       }
     }
-  } catch {
-    // ステップ配信キュー登録失敗は無視
+  } catch (err) {
+    console.error("handleFollow: step message queue failed", err)
   }
-
-  // メッセージログ記録
-  await supabase.from("message_logs").insert({
-    organization_id: context.organizationId,
-    line_user_id: userId,
-    event_type: "follow",
-    raw_event: JSON.parse(JSON.stringify(event)),
-  })
 }
 
 // ブロック（友だち解除）イベント
