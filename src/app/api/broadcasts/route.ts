@@ -4,6 +4,7 @@ import { getAuthenticatedOrgId } from "@/lib/api/auth"
 import { createAdminClient } from "@/lib/supabase/server"
 import { pushMessage, broadcast } from "@/lib/line/client"
 import { createFileDeliveryMessage } from "@/lib/line/flex-templates"
+import { fetchTargetFriendsForBroadcast } from "@/lib/broadcasts/targeting"
 
 function replaceNameTag(text: string, displayName: string): string {
   return text.replace(/\{name\}/g, displayName).replace(/\{名前\}/g, displayName)
@@ -195,15 +196,19 @@ export async function POST(request: NextRequest) {
         // 全員配信（名前タグなし）— LINE の broadcast API を使用
         // 個別追跡はできないが、個別メッセージ履歴に反映させるため active 友だち
         // 全員へ message_logs を楽観的に記録する。
+        //
+        // 友だち取得は共通 helper でページネーションを行い、1000 行上限で
+        // 履歴反映から人がサイレントに漏れるのを防ぐ。
         await broadcast(messages, { accessToken: lineAccount.channel_access_token })
 
-        const { data: allActive } = await supabase
-          .from("friends")
-          .select("id, line_user_id")
-          .eq("organization_id", orgId)
-          .eq("status", "active")
+        const activeFriends = await fetchTargetFriendsForBroadcast(
+          supabase,
+          orgId,
+          "all",
+          null,
+          { statusFilter: "active" }
+        )
 
-        const activeFriends = (allActive || []) as Array<{ id: string; line_user_id: string }>
         sentCount = activeFriends.length
         await logBroadcastDelivery(
           supabase,
@@ -222,49 +227,16 @@ export async function POST(request: NextRequest) {
         // 「141人に送信済み」と表示されても実際には十数名にしか届いていない
         // という事象が発生していた。個別 push なら Promise.allSettled で
         // ユーザー単位の成功/失敗を把握できる。
-        let friendQuery = supabase
-          .from("friends")
-          .select("id, line_user_id, display_name, custom_name")
-          .eq("organization_id", orgId)
-          .eq("status", "active")
-
-        if (targetType === "tag" && targetFilter?.tagIds && Array.isArray(targetFilter.tagIds) && targetFilter.tagIds.length > 0) {
-          const { data: taggedFriends } = await supabase
-            .from("friend_tags")
-            .select("friend_id")
-            .in("tag_id", targetFilter.tagIds)
-          const friendIds = (taggedFriends || [])
-            .map((ft: { friend_id: string | null }) => ft.friend_id)
-            .filter((id): id is string => id !== null)
-          if (friendIds.length > 0) {
-            friendQuery = friendQuery.in("id", friendIds)
-          } else {
-            friendQuery = friendQuery.eq("id", "00000000-0000-0000-0000-000000000000")
-          }
-        } else if (targetType === "seminar" && targetFilter?.seminarId) {
-          const { data: attendances } = await supabase
-            .from("attendances")
-            .select("friend_id")
-            .eq("seminar_id", targetFilter.seminarId)
-            .neq("status", "cancelled")
-          const friendIds = (attendances || [])
-            .map((a: { friend_id: string | null }) => a.friend_id)
-            .filter((id): id is string => id !== null)
-          if (friendIds.length > 0) {
-            friendQuery = friendQuery.in("id", friendIds)
-          } else {
-            friendQuery = friendQuery.eq("id", "00000000-0000-0000-0000-000000000000")
-          }
-        }
-        // targetType==="all" && hasNameTag の場合は絞り込みなし（全 active 友だち）
-
-        const { data: targetFriends } = await friendQuery
-        const friends = (targetFriends || []) as Array<{
-          id: string
-          line_user_id: string
-          display_name: string | null
-          custom_name: string | null
-        }>
+        //
+        // 対象友だちの取得は共通 helper に委譲する。helper 内部でページネーションを
+        // 行い、Supabase のデフォルト 1000 行上限で人がサイレントに漏れるのを防ぐ。
+        const friends = await fetchTargetFriendsForBroadcast(
+          supabase,
+          orgId,
+          (targetType === "tag" || targetType === "seminar") ? targetType : "all",
+          (targetFilter || null) as { tagIds?: string[]; seminarId?: string } | null,
+          { statusFilter: "active" }
+        )
 
         // 成功したユーザーだけを追跡して、最後に message_logs へまとめて挿入する
         const successfulFriends: Array<{ id: string; line_user_id: string }> = []

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getAuthenticatedOrgId } from "@/lib/api/auth"
 import { createAdminClient } from "@/lib/supabase/server"
 import { getProfile } from "@/lib/line/client"
+import { fetchTargetFriendsForBroadcast } from "@/lib/broadcasts/targeting"
 
 export const maxDuration = 300
 
@@ -73,68 +74,17 @@ export async function POST(
       target_filter: { tagIds?: string[]; seminarId?: string } | null
     }).target_filter
 
-    // 2. 対象友だち一覧を復元
-    let friendQuery = supabase
-      .from("friends")
-      .select("id, line_user_id, display_name, custom_name")
-      .eq("organization_id", orgId)
-      .eq("status", "active")
-
-    if (
-      targetType === "tag" &&
-      targetFilter?.tagIds &&
-      Array.isArray(targetFilter.tagIds) &&
-      targetFilter.tagIds.length > 0
-    ) {
-      const { data: taggedFriends } = await supabase
-        .from("friend_tags")
-        .select("friend_id")
-        .in("tag_id", targetFilter.tagIds)
-      const friendIds = (taggedFriends || [])
-        .map((ft: { friend_id: string | null }) => ft.friend_id)
-        .filter((fid): fid is string => fid !== null)
-      if (friendIds.length > 0) {
-        friendQuery = friendQuery.in("id", friendIds)
-      } else {
-        return NextResponse.json({
-          totalChecked: 0,
-          reachableCount: 0,
-          unreachableCount: 0,
-          taggedCount: 0,
-          errorTagName: "送信エラー",
-          unreachable: [],
-        })
-      }
-    } else if (targetType === "seminar" && targetFilter?.seminarId) {
-      const { data: attendances } = await supabase
-        .from("attendances")
-        .select("friend_id")
-        .eq("seminar_id", targetFilter.seminarId)
-        .neq("status", "cancelled")
-      const friendIds = (attendances || [])
-        .map((a: { friend_id: string | null }) => a.friend_id)
-        .filter((fid): fid is string => fid !== null)
-      if (friendIds.length > 0) {
-        friendQuery = friendQuery.in("id", friendIds)
-      } else {
-        return NextResponse.json({
-          totalChecked: 0,
-          reachableCount: 0,
-          unreachableCount: 0,
-          taggedCount: 0,
-          errorTagName: "送信エラー",
-          unreachable: [],
-        })
-      }
-    }
-
-    const { data: friendsData } = await friendQuery
-    const targetFriends = (friendsData || []) as Array<{
-      id: string
-      line_user_id: string
-      display_name: string | null
-      custom_name: string | null
-    }>
+    // 2. 対象友だち一覧を取得（共通 helper でページネーション & 重複排除）
+    // 到達可否の検証なので status=active のみが対象（blocked は既に不到達と確定）。
+    const normalizedTargetType =
+      targetType === "tag" || targetType === "seminar" ? targetType : "all"
+    const targetFriends = await fetchTargetFriendsForBroadcast(
+      supabase,
+      orgId,
+      normalizedTargetType,
+      targetFilter,
+      { statusFilter: "active" }
+    )
 
     if (targetFriends.length === 0) {
       return NextResponse.json({

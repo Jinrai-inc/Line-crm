@@ -31,6 +31,24 @@ import {
   XCircle,
 } from "lucide-react"
 
+interface IntegrityIssue {
+  code: string
+  severity: "info" | "warning" | "error"
+  message: string
+}
+
+interface IntegrityReport {
+  targetTotalAll: number
+  targetActiveCount: number
+  targetNonActiveCount: number
+  broadcastSentCount: number
+  broadcastFailedCount: number
+  deliveryLogCount: number
+  liveSentMatchCount: number
+  liveUnsentCount: number
+  issues: IntegrityIssue[]
+}
+
 interface BroadcastDetail {
   broadcast: {
     id: string
@@ -48,6 +66,7 @@ interface BroadcastDetail {
   unsentCount: number
   sent: Friend[]
   unsent: Friend[]
+  integrity?: IntegrityReport
 }
 
 interface Friend {
@@ -207,7 +226,7 @@ export default function BroadcastDetailPage({
     )
   }
 
-  const { broadcast, totalTarget, sentCount, unsentCount, sent, unsent } = detail
+  const { broadcast, totalTarget, sentCount, unsentCount, sent, unsent, integrity } = detail
   const formattedSentAt = broadcast.sent_at
     ? new Date(broadcast.sent_at).toLocaleString("ja-JP")
     : "-"
@@ -435,6 +454,93 @@ export default function BroadcastDetailPage({
           </CardContent>
         </Card>
       </div>
+
+      {/* 整合性チェック（記述的な配信到達性チェック） */}
+      {integrity && (
+        <Card className="mb-5">
+          <CardContent className="p-5 space-y-3">
+            <div className="flex items-center gap-2 mb-1">
+              <ShieldCheck className="h-4 w-4 text-blue-600" />
+              <h3 className="text-sm font-semibold">整合性チェック</h3>
+              <span className="text-xs text-gray-400">タグ → 配信 → 履歴 の突合</span>
+            </div>
+
+            {/* 数値テーブル */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+              <div className="rounded border p-2">
+                <p className="text-gray-500">タグ/対象条件一致 (全状態)</p>
+                <p className="text-lg font-bold">{integrity.targetTotalAll}</p>
+              </div>
+              <div className="rounded border p-2">
+                <p className="text-gray-500">うち active (配信対象)</p>
+                <p className="text-lg font-bold" style={{ color: accentColor }}>
+                  {integrity.targetActiveCount}
+                </p>
+              </div>
+              <div className="rounded border p-2">
+                <p className="text-gray-500">配信時の送信成功数</p>
+                <p className="text-lg font-bold text-[#06C755]">
+                  {integrity.broadcastSentCount}
+                </p>
+                {integrity.broadcastFailedCount > 0 && (
+                  <p className="text-[10px] text-red-500">
+                    失敗 {integrity.broadcastFailedCount}
+                  </p>
+                )}
+              </div>
+              <div className="rounded border p-2">
+                <p className="text-gray-500">個別履歴の記録数</p>
+                <p className="text-lg font-bold">
+                  {integrity.deliveryLogCount}
+                </p>
+              </div>
+            </div>
+
+            {/* 非 active 内訳 */}
+            {integrity.targetNonActiveCount > 0 && (
+              <p className="text-xs text-gray-500">
+                タグ/対象条件を満たす友だちのうち{" "}
+                <span className="font-bold text-gray-700">
+                  {integrity.targetNonActiveCount}人
+                </span>
+                {" "}はブロック/解除済みのため配信対象外です
+              </p>
+            )}
+
+            {/* 警告 / OK メッセージ */}
+            <div className="space-y-1.5 pt-1">
+              {integrity.issues.map((issue, idx) => {
+                const isError = issue.severity === "error"
+                const isWarning = issue.severity === "warning"
+                const isAllGreen = issue.code === "all_green"
+                return (
+                  <div
+                    key={idx}
+                    className={`flex gap-2 items-start rounded-md px-2.5 py-2 text-xs ${
+                      isError
+                        ? "bg-red-50 border border-red-100 text-red-900"
+                        : isWarning
+                        ? "bg-amber-50 border border-amber-100 text-amber-900"
+                        : isAllGreen
+                        ? "bg-green-50 border border-green-100 text-green-900"
+                        : "bg-gray-50 border border-gray-100 text-gray-700"
+                    }`}
+                  >
+                    {isAllGreen ? (
+                      <CheckCircle2 className="h-3.5 w-3.5 mt-0.5 shrink-0 text-green-600" />
+                    ) : isError || isWarning ? (
+                      <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                    ) : (
+                      <ShieldCheck className="h-3.5 w-3.5 mt-0.5 shrink-0 text-gray-500" />
+                    )}
+                    <p className="leading-relaxed">{issue.message}</p>
+                  </div>
+                )
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* タブ: 未送信 / 送信済み */}
       <Tabs value={tab} onValueChange={(v) => setTab(v as "unsent" | "sent")}>

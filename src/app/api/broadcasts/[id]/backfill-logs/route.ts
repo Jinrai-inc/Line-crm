@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getAuthenticatedOrgId } from "@/lib/api/auth"
 import { createAdminClient } from "@/lib/supabase/server"
+import { fetchTargetFriendsForBroadcast } from "@/lib/broadcasts/targeting"
 
 export const maxDuration = 300
 
@@ -54,67 +55,41 @@ export async function POST(
       (broadcast as { sent_at: string | null }).sent_at ||
       (broadcast as { created_at: string }).created_at
 
-    // 2. 対象友だち一覧を復元
+    // 2. 対象友だち一覧を復元（共通 helper にページネーションと重複排除を委譲）
     // status フィルタは掛けない：過去配信時点で active だった友だちが
-    // その後 blocked に flip されていても履歴に反映させるため。
-    // 代わりに first_added_at <= broadcast.sent_at で、配信より後に
-    // 追加された友だちを除外する。
-    let friendQuery = supabase
-      .from("friends")
-      .select("id, line_user_id, first_added_at")
-      .eq("organization_id", orgId)
-      .lte("first_added_at", broadcastSentAt)
+    // その後 blocked / unfollowed に flip されていても履歴に反映させるため。
+    const normalizedTargetType =
+      targetType === "tag" || targetType === "seminar" ? targetType : "all"
+    const allCandidates = await fetchTargetFriendsForBroadcast(
+      supabase,
+      orgId,
+      normalizedTargetType,
+      targetFilter,
+      { statusFilter: null }
+    )
 
-    if (
-      targetType === "tag" &&
-      targetFilter?.tagIds &&
-      Array.isArray(targetFilter.tagIds) &&
-      targetFilter.tagIds.length > 0
-    ) {
-      const { data: taggedFriends } = await supabase
-        .from("friend_tags")
-        .select("friend_id")
-        .in("tag_id", targetFilter.tagIds)
-      const friendIds = (taggedFriends || [])
-        .map((ft: { friend_id: string | null }) => ft.friend_id)
-        .filter((fid): fid is string => fid !== null)
-      if (friendIds.length > 0) {
-        friendQuery = friendQuery.in("id", friendIds)
-      } else {
-        return NextResponse.json({
-          insertedCount: 0,
-          skippedCount: 0,
-          targetCount: 0,
-          message: "対象友だちがいません",
-        })
-      }
-    } else if (targetType === "seminar" && targetFilter?.seminarId) {
-      const { data: attendances } = await supabase
-        .from("attendances")
-        .select("friend_id")
-        .eq("seminar_id", targetFilter.seminarId)
-        .neq("status", "cancelled")
-      const friendIds = (attendances || [])
-        .map((a: { friend_id: string | null }) => a.friend_id)
-        .filter((fid): fid is string => fid !== null)
-      if (friendIds.length > 0) {
-        friendQuery = friendQuery.in("id", friendIds)
-      } else {
-        return NextResponse.json({
-          insertedCount: 0,
-          skippedCount: 0,
-          targetCount: 0,
-          message: "対象友だちがいません",
-        })
+    // first_added_at <= broadcast.sent_at で、配信より後に追加された
+    // 新しい友だちに誤って履歴が入らないようにフィルタする。
+    // helper は first_added_at を返さないので、ID リストに対して再度クエリする。
+    const candidateIds = allCandidates.map((f) => f.id)
+    const eligibleIds = new Set<string>()
+    if (candidateIds.length > 0) {
+      const BATCH = 500
+      for (let i = 0; i < candidateIds.length; i += BATCH) {
+        const idBatch = candidateIds.slice(i, i + BATCH)
+        const { data: filtered } = await supabase
+          .from("friends")
+          .select("id")
+          .eq("organization_id", orgId)
+          .in("id", idBatch)
+          .lte("first_added_at", broadcastSentAt)
+        for (const row of (filtered || []) as Array<{ id: string }>) {
+          eligibleIds.add(row.id)
+        }
       }
     }
-    // "all" の場合は絞り込みなし
 
-    const { data: friendsData } = await friendQuery
-    const targetFriends = (friendsData || []) as Array<{
-      id: string
-      line_user_id: string
-    }>
+    const targetFriends = allCandidates.filter((f) => eligibleIds.has(f.id))
 
     if (targetFriends.length === 0) {
       return NextResponse.json({
