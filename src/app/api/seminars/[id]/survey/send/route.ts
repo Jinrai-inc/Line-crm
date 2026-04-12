@@ -3,10 +3,15 @@ import { getAuthenticatedOrgId } from "@/lib/api/auth"
 import { createAdminClient } from "@/lib/supabase/server"
 import { pushMessageBatch } from "@/lib/line/client"
 import { createSurveyMessage } from "@/lib/line/flex-templates"
+import { fetchTargetFriendsForBroadcast } from "@/lib/broadcasts/targeting"
 
 export const maxDuration = 300
 
-// アンケート一斉送信
+// セミナーアンケート一斉送信
+//
+// 配信対象は配信機能 (broadcasts) と同じ共通 helper に統一する。
+// includeTagIds (AND) / excludeTagIds (NOT) / legacy tagIds (OR) を
+// すべてサポートし、1000 行上限の影響も受けない。
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -22,7 +27,30 @@ export async function POST(
     const { friendIds, targetType, targetFilter } = body as {
       friendIds?: string[]
       targetType?: string
-      targetFilter?: { tagIds?: string[]; seminarId?: string }
+      targetFilter?: {
+        tagIds?: string[]
+        includeTagIds?: string[]
+        excludeTagIds?: string[]
+        seminarId?: string
+      }
+    }
+
+    // タグ指定のときは含む/除外/legacy のいずれかが必須
+    if (targetType === "tag") {
+      const tf = targetFilter || {}
+      const hasInclude =
+        (tf.includeTagIds && tf.includeTagIds.length > 0) ||
+        (tf.tagIds && tf.tagIds.length > 0)
+      const hasExclude = tf.excludeTagIds && tf.excludeTagIds.length > 0
+      if (!hasInclude && !hasExclude) {
+        return NextResponse.json(
+          {
+            error:
+              "タグ指定送信には、含むタグまたは除外タグを 1 つ以上指定してください",
+          },
+          { status: 400 }
+        )
+      }
     }
 
     // LINE設定取得
@@ -58,54 +86,52 @@ export async function POST(
     const questions = JSON.parse(survey.questions || "[]")
 
     // 送信対象取得
+    // 4 系統:
+    //   1) friendIds 明示指定: 個別選択モード（友だち詳細から送る等）
+    //   2) targetType="all": 全 active 友だち
+    //   3) targetType="tag": 共通 helper でタグ条件処理
+    //   4) デフォルト（指定なし）: このセミナーの参加者全員
     let targetFriends: { line_user_id: string }[]
     if (friendIds && friendIds.length > 0) {
-      const { data } = await admin
-        .from("friends")
-        .select("line_user_id")
-        .eq("organization_id", orgId)
-        .in("id", friendIds)
-      targetFriends = data || []
-    } else if (targetType === "all") {
-      // 全友だち
-      const { data } = await admin
-        .from("friends")
-        .select("line_user_id")
-        .eq("organization_id", orgId)
-        .eq("status", "active")
-      targetFriends = data || []
-    } else if (targetType === "tag" && targetFilter?.tagIds?.length) {
-      // タグ指定
-      const { data: taggedFriends } = await admin
-        .from("friend_tags")
-        .select("friend_id")
-        .in("tag_id", targetFilter.tagIds)
-      const friendIdList = (taggedFriends || []).map((ft: { friend_id: string | null }) => ft.friend_id).filter((fid): fid is string => fid !== null)
-      if (friendIdList.length > 0) {
+      // 友だちID 明示指定（バッチで取得）
+      const collected: { line_user_id: string }[] = []
+      const BATCH = 500
+      for (let i = 0; i < friendIds.length; i += BATCH) {
+        const idBatch = friendIds.slice(i, i + BATCH)
         const { data } = await admin
           .from("friends")
           .select("line_user_id")
           .eq("organization_id", orgId)
-          .eq("status", "active")
-          .in("id", friendIdList)
-        targetFriends = data || []
-      } else {
-        targetFriends = []
+          .in("id", idBatch)
+        for (const row of (data || []) as Array<{ line_user_id: string }>) {
+          collected.push(row)
+        }
       }
+      targetFriends = collected
+    } else if (targetType === "all" || targetType === "tag") {
+      const fetched = await fetchTargetFriendsForBroadcast(
+        admin,
+        orgId,
+        targetType,
+        (targetFilter || null) as {
+          tagIds?: string[]
+          includeTagIds?: string[]
+          excludeTagIds?: string[]
+          seminarId?: string
+        } | null,
+        { statusFilter: "active" }
+      )
+      targetFriends = fetched.map((f) => ({ line_user_id: f.line_user_id }))
     } else {
-      // デフォルト：セミナー参加者全員
-      const { data: attendances } = await admin
-        .from("attendances")
-        .select("friends:friend_id(line_user_id)")
-        .eq("seminar_id", id)
-        .neq("status", "cancelled")
-
-      targetFriends = (attendances || [])
-        .map((a: Record<string, unknown>) => {
-          const f = a.friends as { line_user_id: string } | null
-          return f ? { line_user_id: f.line_user_id } : null
-        })
-        .filter((f): f is { line_user_id: string } => f !== null)
+      // デフォルト：このセミナーの参加者全員（cancelled を除く）
+      const fetched = await fetchTargetFriendsForBroadcast(
+        admin,
+        orgId,
+        "seminar",
+        { seminarId: id },
+        { statusFilter: "active" }
+      )
+      targetFriends = fetched.map((f) => ({ line_user_id: f.line_user_id }))
     }
 
     // アンケートFlex Message作成

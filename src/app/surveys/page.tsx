@@ -104,7 +104,9 @@ export default function SurveysPage() {
   const [sendResult, setSendResult] = useState<{ sentCount: number; failedCount: number } | null>(null)
   const [sendTargetType, setSendTargetType] = useState("all")
   const [tags, setTags] = useState<{ id: string; name: string }[]>([])
-  const [selectedTagIds, setSelectedTagIds] = useState<string[]>([])
+  // 含むタグ (AND) / 除外タグ (NOT) — broadcasts と同じ仕組み
+  const [includeTagIds, setIncludeTagIds] = useState<string[]>([])
+  const [excludeTagIds, setExcludeTagIds] = useState<string[]>([])
   const [seminars, setSeminars] = useState<{ id: string; title: string; status?: string }[]>([])
   const [selectedSeminarId, setSelectedSeminarId] = useState("")
 
@@ -239,9 +241,24 @@ export default function SurveysPage() {
     setSendingSurvey(survey)
     setSendResult(null)
     setSendTargetType("all")
-    setSelectedTagIds([])
+    setIncludeTagIds([])
+    setExcludeTagIds([])
     setSelectedSeminarId("")
     setSendDialogOpen(true)
+  }
+
+  // include / exclude を排他的にトグル（同じタグは両方に入らない）
+  function toggleIncludeTag(tagId: string) {
+    setIncludeTagIds((prev) =>
+      prev.includes(tagId) ? prev.filter((id) => id !== tagId) : [...prev, tagId]
+    )
+    setExcludeTagIds((prev) => prev.filter((id) => id !== tagId))
+  }
+  function toggleExcludeTag(tagId: string) {
+    setExcludeTagIds((prev) =>
+      prev.includes(tagId) ? prev.filter((id) => id !== tagId) : [...prev, tagId]
+    )
+    setIncludeTagIds((prev) => prev.filter((id) => id !== tagId))
   }
 
   async function handleSend() {
@@ -251,7 +268,7 @@ export default function SurveysPage() {
     try {
       const body: Record<string, unknown> = { targetType: sendTargetType }
       if (sendTargetType === "tag") {
-        body.targetFilter = { tagIds: selectedTagIds }
+        body.targetFilter = { includeTagIds, excludeTagIds }
       } else if (sendTargetType === "seminar") {
         body.targetFilter = { seminarId: selectedSeminarId }
       }
@@ -787,25 +804,91 @@ export default function SurveysPage() {
               </div>
 
               {sendTargetType === "tag" && (
-                <div className="space-y-2">
-                  <Label>タグを選択</Label>
-                  <div className="flex flex-wrap gap-2">
-                    {tags.map((tag) => (
-                      <button
-                        key={tag.id}
-                        onClick={() => setSelectedTagIds((prev) =>
-                          prev.includes(tag.id) ? prev.filter((id) => id !== tag.id) : [...prev, tag.id]
-                        )}
-                        className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
-                          selectedTagIds.includes(tag.id)
-                            ? "bg-blue-100 border-blue-300 text-blue-800"
-                            : "border-gray-200 text-gray-600 hover:bg-gray-50"
-                        }`}
-                      >
-                        {tag.name}
-                      </button>
-                    ))}
-                  </div>
+                <div className="space-y-4 rounded-lg border bg-gray-50/50 p-3">
+                  {tags.length === 0 ? (
+                    <p className="text-xs text-gray-500">タグがまだ作成されていません</p>
+                  ) : (
+                    <>
+                      {/* 含むタグ (AND) */}
+                      <div className="space-y-1.5">
+                        <Label className="text-xs font-semibold text-gray-700 flex items-center gap-1.5">
+                          <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#06C755]" />
+                          含むタグ（選択した全てを持つ人）
+                        </Label>
+                        <div className="flex flex-wrap gap-1.5">
+                          {tags.map((tag) => {
+                            const selected = includeTagIds.includes(tag.id)
+                            return (
+                              <button
+                                key={`inc-${tag.id}`}
+                                type="button"
+                                onClick={() => toggleIncludeTag(tag.id)}
+                                className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
+                                  selected
+                                    ? "bg-[#06C755] border-[#06C755] text-white"
+                                    : "border-gray-200 text-gray-600 hover:bg-gray-50"
+                                }`}
+                              >
+                                {selected && "✓ "}
+                                {tag.name}
+                              </button>
+                            )
+                          })}
+                        </div>
+                      </div>
+
+                      {/* 除外タグ (NOT) */}
+                      <div className="space-y-1.5 pt-3 border-t border-gray-200">
+                        <Label className="text-xs font-semibold text-gray-700 flex items-center gap-1.5">
+                          <span className="inline-block w-1.5 h-1.5 rounded-full bg-red-500" />
+                          除外するタグ（選択したいずれかを持つ人は対象外）
+                        </Label>
+                        <div className="flex flex-wrap gap-1.5">
+                          {tags.map((tag) => {
+                            const selected = excludeTagIds.includes(tag.id)
+                            return (
+                              <button
+                                key={`exc-${tag.id}`}
+                                type="button"
+                                onClick={() => toggleExcludeTag(tag.id)}
+                                className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
+                                  selected
+                                    ? "bg-red-500 border-red-500 text-white line-through"
+                                    : "border-gray-200 text-gray-600 hover:bg-gray-50"
+                                }`}
+                              >
+                                {selected && "✕ "}
+                                {tag.name}
+                              </button>
+                            )
+                          })}
+                        </div>
+                      </div>
+
+                      {/* 条件サマリー */}
+                      {(includeTagIds.length > 0 || excludeTagIds.length > 0) ? (
+                        <div className="pt-2 text-xs text-gray-600 border-t border-gray-200 space-y-0.5">
+                          <p className="font-semibold">送信条件:</p>
+                          {includeTagIds.length > 0 && (
+                            <p>
+                              ・<span className="font-bold">全て持つ</span>:{" "}
+                              {tags.filter((t) => includeTagIds.includes(t.id)).map((t) => t.name).join(" かつ ")}
+                            </p>
+                          )}
+                          {excludeTagIds.length > 0 && (
+                            <p>
+                              ・<span className="font-bold">一つも持たない</span>:{" "}
+                              {tags.filter((t) => excludeTagIds.includes(t.id)).map((t) => t.name).join(" / ")}
+                            </p>
+                          )}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-gray-400 pt-2 border-t border-gray-200">
+                          含むタグまたは除外タグを 1 つ以上選択してください
+                        </p>
+                      )}
+                    </>
+                  )}
                 </div>
               )}
 
@@ -839,7 +922,7 @@ export default function SurveysPage() {
                 </Button>
                 <Button
                   onClick={handleSend}
-                  disabled={sending || (sendTargetType === "tag" && selectedTagIds.length === 0) || (sendTargetType === "seminar" && !selectedSeminarId)}
+                  disabled={sending || (sendTargetType === "tag" && includeTagIds.length === 0 && excludeTagIds.length === 0) || (sendTargetType === "seminar" && !selectedSeminarId)}
                   style={{ backgroundColor: accentColor }}
                   className="text-white hover:opacity-90"
                 >
