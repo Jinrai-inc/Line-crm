@@ -256,15 +256,20 @@ async function handleFollow(
   // ウェルカムメッセージ送信（管理画面の設定を使用）
   // greeting_settings テーブルの読み込みや reply の失敗で handleFollow 全体が
   // 落ちないよう、全体を try/catch で囲う。reply が失敗しても push で救う。
+  type GreetingSettings = {
+    enabled: boolean
+    message: string | null
+    schedule_enabled: boolean
+    schedule_start: string | null
+    schedule_end: string | null
+    schedule_message: string | null
+    welcome_survey_id: string | null
+    schedule_survey_id: string | null
+    follow_up_messages: string[] | null
+  }
+
   try {
-    let gs: {
-      enabled: boolean; message: string | null;
-      schedule_enabled: boolean; schedule_start: string | null;
-      schedule_end: string | null; schedule_message: string | null;
-      welcome_survey_id: string | null;
-      schedule_survey_id: string | null;
-      follow_up_messages: string[] | null;
-    } | null = null
+    let gs: GreetingSettings | null = null
 
     try {
       const { data: greetingSettings } = await (supabase
@@ -272,7 +277,7 @@ async function handleFollow(
         .select("*")
         .eq("organization_id" as never, context.organizationId)
         .maybeSingle() as unknown as Promise<{
-          data: typeof gs
+          data: GreetingSettings | null
           error: unknown
         }>)
       gs = greetingSettings

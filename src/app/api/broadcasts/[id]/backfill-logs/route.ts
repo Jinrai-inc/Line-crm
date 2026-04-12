@@ -113,12 +113,17 @@ export async function POST(
     }
 
     // 3. 既に message_logs に入っているエントリを取得（冪等性のため）
-    const { data: existingLogs } = await supabase
+    // .filter() の column 引数は厳格に型付けされているため、JSONB パス式を渡すときは
+    // never にキャストして型チェックを回避する。
+    const { data: existingLogs } = await (supabase
       .from("message_logs")
       .select("friend_id, line_user_id")
       .eq("organization_id", orgId)
       .eq("event_type", "message_send")
-      .filter("raw_event->>broadcast_id", "eq", id)
+      .filter("raw_event->>broadcast_id" as never, "eq", id) as unknown as Promise<{
+        data: Array<{ friend_id: string | null; line_user_id: string | null }> | null
+        error: unknown
+      }>)
 
     const existingFriendIds = new Set<string>()
     const existingLineUserIds = new Set<string>()

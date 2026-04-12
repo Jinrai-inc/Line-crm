@@ -106,13 +106,21 @@ export async function GET(
     const targetFriends = (friendsData || []) as FriendRow[]
 
     // 3. この配信の受信ログを取得（raw_event.broadcast_id で絞り込み）
-    // JSONB -> テキスト比較 は Supabase の filter で可能
-    const { data: logsData } = await supabase
+    // .filter() の column 引数は厳格に型付けされているため、JSONB パス式を渡すときは
+    // never にキャストして型チェックを回避する（PostgREST は実行時に解釈する）。
+    const { data: logsData } = await (supabase
       .from("message_logs")
       .select("friend_id, line_user_id, created_at")
       .eq("organization_id", orgId)
       .eq("event_type", "message_send")
-      .filter("raw_event->>broadcast_id", "eq", id)
+      .filter("raw_event->>broadcast_id" as never, "eq", id) as unknown as Promise<{
+        data: Array<{
+          friend_id: string | null
+          line_user_id: string | null
+          created_at: string
+        }> | null
+        error: unknown
+      }>)
 
     const deliveredFriendIds = new Set<string>()
     const deliveredLineUserIds = new Set<string>()
