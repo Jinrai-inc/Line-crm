@@ -172,6 +172,41 @@ export default function FriendDetailPage() {
     }
   }
 
+  // CRM 側からの手動ブロック / ブロック解除
+  // status を "blocked" / "active" にトグルする。
+  // 配信ロジックは status="active" のみを対象とするため、これだけで
+  // 今後の配信から除外 / 復帰できる。
+  const [statusChanging, setStatusChanging] = useState(false)
+  const handleToggleBlock = async () => {
+    if (!friend || statusChanging) return
+    const isCurrentlyBlocked = friend.status === "blocked" || friend.status === "unfollowed"
+    const nextStatus = isCurrentlyBlocked ? "active" : "blocked"
+    const confirmMessage = isCurrentlyBlocked
+      ? "この友だちのブロックを解除します。今後の配信対象に再び含まれます。よろしいですか？"
+      : "この友だちをブロックします。今後の配信対象から除外されます（LINE 側の友だち関係には影響しません）。よろしいですか？"
+    if (!confirm(confirmMessage)) return
+
+    setStatusChanging(true)
+    try {
+      const res = await fetch(`/api/friends/${friendId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: nextStatus }),
+      })
+      if (res.ok) {
+        await fetchFriend()
+      } else {
+        const json = await res.json().catch(() => ({}))
+        alert(json.error || "ステータスの更新に失敗しました")
+      }
+    } catch (err) {
+      console.error("Failed to toggle block:", err)
+      alert("ステータスの更新に失敗しました")
+    } finally {
+      setStatusChanging(false)
+    }
+  }
+
   const handleAddTag = async (tagId: string) => {
     try {
       const res = await fetch(`/api/friends/${friendId}/tags`, {
@@ -294,9 +329,39 @@ export default function FriendDetailPage() {
             </div>
 
             <div className="space-y-3">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-sm text-muted-foreground">ステータス:</span>
                 <Badge className={status.className}>{status.label}</Badge>
+                {/* CRM側からのブロック切替 */}
+                {friend.status === "active" ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs ml-auto border-red-200 text-red-700 hover:bg-red-50 hover:text-red-800"
+                    onClick={handleToggleBlock}
+                    disabled={statusChanging}
+                  >
+                    {statusChanging ? (
+                      <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                    ) : (
+                      <X className="h-3 w-3 mr-1" />
+                    )}
+                    ブロック
+                  </Button>
+                ) : (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs ml-auto border-green-200 text-green-700 hover:bg-green-50 hover:text-green-800"
+                    onClick={handleToggleBlock}
+                    disabled={statusChanging}
+                  >
+                    {statusChanging ? (
+                      <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                    ) : null}
+                    ブロック解除
+                  </Button>
+                )}
               </div>
               <div>
                 <span className="text-sm text-muted-foreground">追加日:</span>

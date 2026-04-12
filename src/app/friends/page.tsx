@@ -309,6 +309,61 @@ export default function FriendsPage() {
     }
   }
 
+  // 選択した友だちを一括でブロック / ブロック解除する
+  // status = "blocked" / "active" を 10 件ずつ並列で PATCH
+  const [bulkStatusSaving, setBulkStatusSaving] = useState(false)
+  const handleBulkStatusChange = async (nextStatus: "blocked" | "active") => {
+    if (selectedIds.size === 0 || bulkStatusSaving) return
+    const label = nextStatus === "blocked" ? "ブロック" : "ブロック解除"
+    if (
+      !confirm(
+        `選択した ${selectedIds.size} 件の友だちを「${label}」します。\n` +
+          (nextStatus === "blocked"
+            ? "今後の配信対象から除外されます（LINE 側の友だち関係には影響しません）。"
+            : "今後の配信対象に再び含まれます。") +
+          "\nよろしいですか？"
+      )
+    )
+      return
+
+    setBulkStatusSaving(true)
+    try {
+      const friendIds = Array.from(selectedIds)
+      const concurrency = 10
+      let succeeded = 0
+      let failed = 0
+      for (let i = 0; i < friendIds.length; i += concurrency) {
+        const batch = friendIds.slice(i, i + concurrency)
+        const results = await Promise.allSettled(
+          batch.map((id) =>
+            fetch(`/api/friends/${id}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ status: nextStatus }),
+            }).then((r) => {
+              if (!r.ok) throw new Error(`HTTP ${r.status}`)
+              return r
+            })
+          )
+        )
+        for (const r of results) {
+          if (r.status === "fulfilled") succeeded += 1
+          else failed += 1
+        }
+      }
+      setSelectedIds(new Set())
+      fetchFriends()
+      alert(
+        `${succeeded} 件を「${label}」に更新しました${failed > 0 ? `（${failed} 件失敗）` : ""}`
+      )
+    } catch (err) {
+      console.error("Bulk status change failed:", err)
+      alert("一括更新に失敗しました")
+    } finally {
+      setBulkStatusSaving(false)
+    }
+  }
+
   const handleBulkTagAssign = async () => {
     if (bulkTagIds.length === 0 || selectedIds.size === 0) return
     setBulkTagSaving(true)
@@ -585,6 +640,26 @@ export default function FriendsPage() {
             <Button variant="outline" size="sm" onClick={handleExportCsv}>
               <DownloadIcon />
               選択をエクスポート
+            </Button>
+            {/* 選択した友だちを一括ブロック / ブロック解除 */}
+            <Button
+              variant="outline"
+              size="sm"
+              className="border-red-200 text-red-700 hover:bg-red-50 hover:text-red-800"
+              onClick={() => handleBulkStatusChange("blocked")}
+              disabled={bulkStatusSaving}
+            >
+              <XIcon className="size-4" />
+              一括ブロック
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="border-green-200 text-green-700 hover:bg-green-50 hover:text-green-800"
+              onClick={() => handleBulkStatusChange("active")}
+              disabled={bulkStatusSaving}
+            >
+              一括ブロック解除
             </Button>
           </div>
         )}
