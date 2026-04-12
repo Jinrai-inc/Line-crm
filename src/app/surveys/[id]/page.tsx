@@ -8,12 +8,23 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog"
+import {
   Loader2,
   ClipboardList,
   Users,
   BarChart3,
   ArrowLeft,
   User,
+  Gift,
+  Send,
+  CheckCircle,
+  XCircle,
 } from "lucide-react"
 import Link from "next/link"
 
@@ -24,9 +35,18 @@ interface SurveyData {
   status: string
 }
 
+interface Choice {
+  text: string
+  tagName?: string
+  rewardMessage?: string
+  rewardUrl?: string
+  file?: { url: string; fileName?: string; mimeType?: string } | null
+}
+
 interface Question {
   label: string
-  choices: { text: string; tagName: string }[]
+  choices: Choice[]
+  hasReward?: boolean
 }
 
 interface ResponseData {
@@ -49,6 +69,28 @@ export default function SurveyResultsPage({ params }: { params: Promise<{ id: st
   const [responses, setResponses] = useState<ResponseData[]>([])
   const [loading, setLoading] = useState(true)
   const [viewMode, setViewMode] = useState<"summary" | "individual">("summary")
+
+  // 特典再送ダイアログ
+  const [resendTarget, setResendTarget] = useState<{
+    questionIndex: number
+    choiceIndex: number
+    question: Question
+    choice: Choice
+    targetCount: number
+  } | null>(null)
+  const [resending, setResending] = useState(false)
+  const [resendResult, setResendResult] = useState<{
+    sentCount: number
+    failedCount: number
+  } | null>(null)
+  const [toast, setToast] = useState<{ type: "success" | "error"; message: string } | null>(null)
+
+  useEffect(() => {
+    if (toast) {
+      const timer = setTimeout(() => setToast(null), 4000)
+      return () => clearTimeout(timer)
+    }
+  }, [toast])
 
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -95,6 +137,84 @@ export default function SurveyResultsPage({ params }: { params: Promise<{ id: st
 
   // ユニーク回答者数
   const uniqueRespondents = new Set(responses.map((r) => r.line_user_id)).size
+
+  // 選択肢に特典が設定されているか
+  function choiceHasReward(choice: Choice): boolean {
+    return !!(choice.rewardMessage || choice.rewardUrl || choice.file)
+  }
+
+  // 特定の選択肢に回答したユニークな line_user_id 数
+  function countRecipients(qIdx: number, cIdx: number): number {
+    const ids = new Set<string>()
+    for (const r of responses) {
+      if (r.question_index === qIdx && r.choice_index === cIdx) {
+        ids.add(r.line_user_id)
+      }
+    }
+    return ids.size
+  }
+
+  // 再送ダイアログを開く
+  function openResendDialog(qIdx: number, cIdx: number) {
+    const question = questions[qIdx]
+    const choice = question?.choices?.[cIdx]
+    if (!question || !choice) return
+    setResendResult(null)
+    setResendTarget({
+      questionIndex: qIdx,
+      choiceIndex: cIdx,
+      question,
+      choice,
+      targetCount: countRecipients(qIdx, cIdx),
+    })
+  }
+
+  // 実行
+  async function handleResend() {
+    if (!resendTarget) return
+    setResending(true)
+    setResendResult(null)
+    try {
+      const res = await fetch(`/api/surveys/${id}/resend-rewards`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          selections: [
+            {
+              questionIndex: resendTarget.questionIndex,
+              choiceIndex: resendTarget.choiceIndex,
+            },
+          ],
+        }),
+      })
+      if (res.ok) {
+        const json = await res.json()
+        setResendResult({
+          sentCount: json.sentCount || 0,
+          failedCount: json.failedCount || 0,
+        })
+        setToast({
+          type: "success",
+          message: `${json.sentCount || 0}件に特典を再送しました${
+            json.failedCount ? `（${json.failedCount}件失敗）` : ""
+          }`,
+        })
+      } else {
+        const json = await res.json().catch(() => ({}))
+        setToast({
+          type: "error",
+          message: json.error || "再送に失敗しました",
+        })
+      }
+    } catch {
+      setToast({
+        type: "error",
+        message: "再送に失敗しました。ネットワーク接続を確認してください。",
+      })
+    } finally {
+      setResending(false)
+    }
+  }
 
   // 個別回答（ユーザーごとにグループ化）
   const responsesByUser = responses.reduce((acc, r) => {
@@ -215,42 +335,212 @@ export default function SurveyResultsPage({ params }: { params: Promise<{ id: st
               </CardContent>
             </Card>
           ) : (
-            questionStats.map((q, qIdx) => (
-              <Card key={qIdx}>
-                <CardContent className="p-5">
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="font-semibold text-sm flex items-center gap-2">
-                      <Badge variant="secondary" className="text-xs">Q{qIdx + 1}</Badge>
-                      {q.label}
-                    </h3>
-                    <span className="text-xs text-gray-400">{q.total}件の回答</span>
-                  </div>
+            questionStats.map((q, qIdx) => {
+              const rawChoices = questions[qIdx]?.choices || []
+              return (
+                <Card key={qIdx}>
+                  <CardContent className="p-5">
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="font-semibold text-sm flex items-center gap-2">
+                        <Badge variant="secondary" className="text-xs">Q{qIdx + 1}</Badge>
+                        {q.label}
+                      </h3>
+                      <span className="text-xs text-gray-400">{q.total}件の回答</span>
+                    </div>
 
-                  <div className="space-y-2">
-                    {q.choiceCounts.map((c, cIdx) => (
-                      <div key={cIdx} className="space-y-1">
-                        <div className="flex items-center justify-between text-sm">
-                          <span>{c.text}</span>
-                          <span className="text-gray-500 text-xs">{c.count}件 ({c.percentage}%)</span>
-                        </div>
-                        <div className="h-6 bg-gray-100 rounded-full overflow-hidden">
-                          <div
-                            className="h-full rounded-full flex items-center pl-2 text-xs text-white font-medium transition-all duration-500"
-                            style={{
-                              width: `${Math.max(c.percentage, c.count > 0 ? 8 : 0)}%`,
-                              backgroundColor: accentColor,
-                            }}
-                          >
-                            {c.percentage > 15 ? `${c.percentage}%` : ""}
+                    <div className="space-y-2">
+                      {q.choiceCounts.map((c, cIdx) => {
+                        const rawChoice = rawChoices[cIdx]
+                        const hasReward = rawChoice ? choiceHasReward(rawChoice) : false
+                        return (
+                          <div key={cIdx} className="space-y-1">
+                            <div className="flex items-center justify-between text-sm gap-2">
+                              <span className="flex items-center gap-1.5">
+                                {c.text}
+                                {hasReward && (
+                                  <Gift className="h-3 w-3 text-[#06C755]" />
+                                )}
+                              </span>
+                              <div className="flex items-center gap-2 shrink-0">
+                                <span className="text-gray-500 text-xs">
+                                  {c.count}件 ({c.percentage}%)
+                                </span>
+                                {hasReward && c.count > 0 && (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-6 text-[11px] px-2"
+                                    onClick={() => openResendDialog(qIdx, cIdx)}
+                                  >
+                                    <Send className="h-3 w-3 mr-1" />
+                                    特典を再送
+                                  </Button>
+                                )}
+                              </div>
+                            </div>
+                            <div className="h-6 bg-gray-100 rounded-full overflow-hidden">
+                              <div
+                                className="h-full rounded-full flex items-center pl-2 text-xs text-white font-medium transition-all duration-500"
+                                style={{
+                                  width: `${Math.max(c.percentage, c.count > 0 ? 8 : 0)}%`,
+                                  backgroundColor: accentColor,
+                                }}
+                              >
+                                {c.percentage > 15 ? `${c.percentage}%` : ""}
+                              </div>
+                            </div>
                           </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            ))
+                        )
+                      })}
+                    </div>
+                  </CardContent>
+                </Card>
+              )
+            })
           )}
+        </div>
+      )}
+
+      {/* 特典再送ダイアログ */}
+      <Dialog
+        open={!!resendTarget}
+        onOpenChange={(open) => {
+          if (!open && !resending) {
+            setResendTarget(null)
+            setResendResult(null)
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Gift className="h-5 w-5 text-[#06C755]" />
+              特典を再送
+            </DialogTitle>
+          </DialogHeader>
+
+          {resendTarget && !resendResult && (
+            <div className="space-y-4">
+              <div className="p-3 bg-gray-50 rounded-lg space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <Badge variant="secondary" className="text-xs shrink-0">
+                    Q{resendTarget.questionIndex + 1}
+                  </Badge>
+                  <p className="text-sm font-medium truncate">
+                    {resendTarget.question.label}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 pl-1">
+                  <span className="text-xs text-gray-500">回答:</span>
+                  <span className="text-sm font-medium" style={{ color: accentColor }}>
+                    {resendTarget.choice.text}
+                  </span>
+                </div>
+              </div>
+
+              {(resendTarget.choice.rewardMessage || resendTarget.choice.rewardUrl || resendTarget.choice.file) && (
+                <div className="p-3 border rounded-lg space-y-1.5 bg-[#06C755]/5 border-[#06C755]/30">
+                  <p className="text-xs font-semibold text-[#06C755]">🎁 送信される特典</p>
+                  {resendTarget.choice.rewardMessage && (
+                    <p className="text-xs text-gray-700 whitespace-pre-wrap">
+                      {resendTarget.choice.rewardMessage}
+                    </p>
+                  )}
+                  {resendTarget.choice.rewardUrl && (
+                    <p className="text-xs text-gray-500 truncate">
+                      URL: {resendTarget.choice.rewardUrl}
+                    </p>
+                  )}
+                  {resendTarget.choice.file?.url && (
+                    <p className="text-xs text-gray-500 truncate">
+                      添付: {resendTarget.choice.file.fileName || resendTarget.choice.file.url}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              <div className="flex items-center gap-2 p-3 rounded-lg bg-blue-50 border border-blue-100">
+                <Users className="h-4 w-4 text-blue-600 shrink-0" />
+                <p className="text-sm text-blue-900">
+                  この選択肢に回答した
+                  <span className="font-bold mx-1">{resendTarget.targetCount}</span>
+                  人に特典を再送します
+                </p>
+              </div>
+
+              <p className="text-xs text-gray-400 leading-relaxed">
+                ※ 既に特典を受け取った人にも再送されます。大量送信時はVercelのタイムアウト（最大5分）内に完了するよう設計されています。
+              </p>
+            </div>
+          )}
+
+          {resendResult && (
+            <div className="py-6 text-center">
+              <CheckCircle className="h-12 w-12 mx-auto mb-3 text-[#06C755]" />
+              <p className="font-medium">
+                {resendResult.sentCount}件に送信しました
+              </p>
+              {resendResult.failedCount > 0 && (
+                <p className="text-sm text-red-500 mt-1">
+                  {resendResult.failedCount}件失敗
+                </p>
+              )}
+            </div>
+          )}
+
+          <DialogFooter>
+            {resendResult ? (
+              <Button
+                onClick={() => {
+                  setResendTarget(null)
+                  setResendResult(null)
+                }}
+              >
+                閉じる
+              </Button>
+            ) : (
+              <>
+                <Button
+                  variant="outline"
+                  disabled={resending}
+                  onClick={() => setResendTarget(null)}
+                >
+                  キャンセル
+                </Button>
+                <Button
+                  onClick={handleResend}
+                  disabled={resending || !resendTarget || resendTarget.targetCount === 0}
+                  style={{ backgroundColor: accentColor }}
+                  className="text-white hover:opacity-90"
+                >
+                  {resending ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Send className="h-4 w-4 mr-2" />
+                  )}
+                  再送する
+                </Button>
+              </>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* トースト */}
+      {toast && (
+        <div className="fixed bottom-6 right-6 z-50 animate-in slide-in-from-bottom-4 fade-in duration-300">
+          <div
+            className={`flex items-center gap-2 rounded-lg px-4 py-3 text-sm font-medium text-white shadow-lg ${
+              toast.type === "success" ? "bg-green-600" : "bg-red-600"
+            }`}
+          >
+            {toast.type === "success" ? (
+              <CheckCircle className="h-4 w-4" />
+            ) : (
+              <XCircle className="h-4 w-4" />
+            )}
+            {toast.message}
+          </div>
         </div>
       )}
 
