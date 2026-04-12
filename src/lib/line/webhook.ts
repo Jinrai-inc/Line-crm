@@ -16,6 +16,12 @@ interface WebhookEvent {
   replyToken?: string
   message?: { id: string; type: string; text?: string }
   postback?: { data: string; params?: Record<string, string> }
+  // LINE は webhook 応答が 1 秒以内に 2xx を返せなかったとき同じイベントを
+  // 自動で再配信する。再配信時は deliveryContext.isRedelivery=true になる。
+  // これを見て二重処理を防がないと、reply が失敗したときの push フォールバック
+  // と組み合わさって、同じメッセージがユーザーに複数回届いてしまう。
+  deliveryContext?: { isRedelivery: boolean }
+  webhookEventId?: string
 }
 
 interface WebhookContext {
@@ -30,6 +36,18 @@ export async function handleWebhookEvent(
   event: WebhookEvent,
   context: WebhookContext
 ): Promise<void> {
+  // 再配信イベントは処理をスキップする。
+  // LINE 側で webhook 応答が 1 秒以内に返らなかった場合に同じ event を
+  // 再配信してくる仕様があり、二重処理すると DB 行の重複や、reply→push
+  // フォールバックによるメッセージ二重送信の原因になる。
+  // LINE はこのフラグで「再配信です」と明示してくれているので、それを信頼して弾く。
+  if (event.deliveryContext?.isRedelivery) {
+    console.log(
+      `[webhook] skipping redelivery event type=${event.type} webhookEventId=${event.webhookEventId || "unknown"}`
+    )
+    return
+  }
+
   switch (event.type) {
     case "follow":
       await handleFollow(event, context)
@@ -1385,28 +1403,22 @@ async function handlePostback(
               { accessToken: context.channelAccessToken }
             )
           } catch (err) {
-            console.error("Survey reply failed:", err)
-            // reply が失敗した場合のフォールバック: push で送信
-            try {
-              await pushMessage(userId, firstBatch, {
-                accessToken: context.channelAccessToken,
-              })
-            } catch {
-              // push失敗も無視（ログのみ）
-            }
+            // reply 失敗時の push フォールバックは意図的に行わない。
+            // LINE の Webhook 再配信（deliveryContext.isRedelivery）が起きたとき、
+            // 再配信側の replyToken は使用済みで reply が必ず失敗するため、
+            // push に fallback すると同じメッセージが二重送信される。
+            // 再配信自体は handleWebhookEvent の入口で弾いているが、万が一
+            // すり抜けても重複を増やさないよう、ここでのフォールバックも無効化する。
+            console.error("Survey reply failed (not falling back to push to avoid duplicates):", err)
           }
         } else {
-          // replyToken が無い場合は全て push
-          try {
-            await pushMessage(userId, firstBatch, {
-              accessToken: context.channelAccessToken,
-            })
-          } catch {
-            // push失敗は無視
-          }
+          // replyToken が無いケースはそもそも稀（LINE の postback は通常 replyToken 付き）。
+          // 非 reply 経路の push は副作用の二重送信に繋がり得るため、行わない。
+          console.warn("Survey postback arrived without replyToken, skipping message send to avoid duplicates")
         }
 
-        // overflow（通常は発生しないが安全のため）
+        // overflow は reply の 5 通制限を超えた分。通常は発生しないが、
+        // 発生時は push で送るしかない。
         if (overflow.length > 0) {
           try {
             await pushMessage(userId, overflow, {
