@@ -26,6 +26,9 @@ import {
   Users,
   Megaphone,
   User,
+  RefreshCw,
+  ShieldCheck,
+  XCircle,
 } from "lucide-react"
 
 interface BroadcastDetail {
@@ -62,6 +65,20 @@ const TARGET_TYPE_LABELS: Record<string, string> = {
   seminar: "セミナー参加者",
 }
 
+interface VerifyResult {
+  totalChecked: number
+  reachableCount: number
+  unreachableCount: number
+  blockedFlippedCount: number
+  unreachable: Array<{
+    id: string
+    line_user_id: string
+    display_name: string | null
+    custom_name: string | null
+    reason: string
+  }>
+}
+
 export default function BroadcastDetailPage({
   params,
 }: {
@@ -73,6 +90,19 @@ export default function BroadcastDetailPage({
   const [detail, setDetail] = useState<BroadcastDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState<"unsent" | "sent">("unsent")
+
+  // バックフィル / 到達確認の状態
+  const [backfilling, setBackfilling] = useState(false)
+  const [verifying, setVerifying] = useState(false)
+  const [verifyResult, setVerifyResult] = useState<VerifyResult | null>(null)
+  const [toast, setToast] = useState<{ type: "success" | "error"; message: string } | null>(null)
+
+  useEffect(() => {
+    if (toast) {
+      const timer = setTimeout(() => setToast(null), 5000)
+      return () => clearTimeout(timer)
+    }
+  }, [toast])
 
   const fetchDetail = useCallback(async () => {
     setLoading(true)
@@ -92,6 +122,58 @@ export default function BroadcastDetailPage({
   useEffect(() => {
     fetchDetail()
   }, [fetchDetail])
+
+  // 過去の配信を個別メッセージ履歴に反映
+  const handleBackfill = async () => {
+    if (backfilling) return
+    if (!confirm("この配信を友だち個別のメッセージ履歴に反映させます。既存のエントリはスキップされます。よろしいですか？")) return
+    setBackfilling(true)
+    try {
+      const res = await fetch(`/api/broadcasts/${id}/backfill-logs`, { method: "POST" })
+      if (res.ok) {
+        const json = await res.json()
+        setToast({
+          type: "success",
+          message: json.message || `${json.insertedCount || 0}件を履歴に反映しました`,
+        })
+        await fetchDetail()
+      } else {
+        const json = await res.json().catch(() => ({}))
+        setToast({ type: "error", message: json.error || "履歴の反映に失敗しました" })
+      }
+    } catch {
+      setToast({ type: "error", message: "履歴の反映に失敗しました" })
+    } finally {
+      setBackfilling(false)
+    }
+  }
+
+  // 対象友だちの到達可否を LINE API で検証
+  const handleVerify = async () => {
+    if (verifying) return
+    if (!confirm("LINE の getProfile API で対象友だちの到達可否を確認します。\n到達不可と判定された友だちは自動的にステータスを「ブロック」に更新します。\nメッセージは送信しません。実行しますか？")) return
+    setVerifying(true)
+    setVerifyResult(null)
+    try {
+      const res = await fetch(`/api/broadcasts/${id}/verify-delivery`, { method: "POST" })
+      if (res.ok) {
+        const json = await res.json()
+        setVerifyResult(json as VerifyResult)
+        setToast({
+          type: "success",
+          message: `到達可能 ${json.reachableCount} 人 / 到達不可 ${json.unreachableCount} 人`,
+        })
+        await fetchDetail()
+      } else {
+        const json = await res.json().catch(() => ({}))
+        setToast({ type: "error", message: json.error || "到達確認に失敗しました" })
+      }
+    } catch {
+      setToast({ type: "error", message: "到達確認に失敗しました" })
+    } finally {
+      setVerifying(false)
+    }
+  }
 
   if (loading) {
     return (
@@ -221,8 +303,97 @@ export default function BroadcastDetailPage({
               <p className="text-sm whitespace-pre-wrap">{broadcast.message_text}</p>
             </div>
           )}
+
+          {/* 過去配信向けのリカバリ操作 */}
+          <div className="flex flex-col sm:flex-row gap-2 pt-2 border-t">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleBackfill}
+              disabled={backfilling}
+              className="flex-1 sm:flex-none"
+            >
+              {backfilling ? (
+                <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+              ) : (
+                <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+              )}
+              履歴に反映（再読み込み）
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleVerify}
+              disabled={verifying}
+              className="flex-1 sm:flex-none"
+            >
+              {verifying ? (
+                <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+              ) : (
+                <ShieldCheck className="h-3.5 w-3.5 mr-1.5" />
+              )}
+              到達確認（送信エラーユーザー検出）
+            </Button>
+          </div>
+          <div className="text-xs text-gray-400 leading-relaxed">
+            <p>・「履歴に反映」は過去の配信を友だち個別のメッセージ履歴に復元します。重複は自動でスキップされます。</p>
+            <p>・「到達確認」は LINE の getProfile で現在の到達可否を検証し、到達不可の友だちを自動で「ブロック」ステータスに更新します（メッセージは送信しません）。</p>
+          </div>
         </CardContent>
       </Card>
+
+      {/* 到達確認の結果 */}
+      {verifyResult && (
+        <Card className="mb-4 border-blue-200 bg-blue-50/40">
+          <CardContent className="p-4 space-y-3">
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="h-4 w-4 text-blue-600" />
+              <p className="text-sm font-semibold text-blue-900">到達確認結果</p>
+            </div>
+            <div className="grid grid-cols-3 gap-3 text-center">
+              <div>
+                <p className="text-xl font-bold">{verifyResult.totalChecked}</p>
+                <p className="text-xs text-gray-500">確認数</p>
+              </div>
+              <div>
+                <p className="text-xl font-bold text-[#06C755]">{verifyResult.reachableCount}</p>
+                <p className="text-xs text-gray-500">到達可能</p>
+              </div>
+              <div>
+                <p className="text-xl font-bold text-red-500">{verifyResult.unreachableCount}</p>
+                <p className="text-xs text-gray-500">到達不可</p>
+              </div>
+            </div>
+            {verifyResult.blockedFlippedCount > 0 && (
+              <p className="text-xs text-gray-600 text-center">
+                {verifyResult.blockedFlippedCount}件のステータスを「ブロック」に更新しました
+              </p>
+            )}
+            {verifyResult.unreachable.length > 0 && (
+              <div className="space-y-1 max-h-64 overflow-y-auto rounded-md border border-red-100 bg-white p-2">
+                <p className="text-xs font-semibold text-red-900 mb-1">到達不可ユーザー</p>
+                {verifyResult.unreachable.map((u) => (
+                  <div key={u.id} className="flex items-center justify-between gap-2 text-xs py-1 px-1 border-b last:border-b-0">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <XCircle className="h-3 w-3 text-red-500 shrink-0" />
+                      <span className="font-medium truncate">
+                        {u.custom_name || u.display_name || "(名前なし)"}
+                      </span>
+                      <span className="text-gray-400 truncate">{u.reason}</span>
+                    </div>
+                    <Link
+                      href={`/friends/${u.id}`}
+                      className="text-blue-600 hover:underline shrink-0"
+                    >
+                      詳細
+                    </Link>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* サマリー */}
       <div className="grid grid-cols-3 gap-3 mb-5">
@@ -291,6 +462,24 @@ export default function BroadcastDetailPage({
           {renderFriendTable(sent, "まだ送信済みのユーザーがいません")}
         </TabsContent>
       </Tabs>
+
+      {/* トースト */}
+      {toast && (
+        <div className="fixed bottom-6 right-6 z-50 animate-in slide-in-from-bottom-4 fade-in duration-300">
+          <div
+            className={`flex items-center gap-2 rounded-lg px-4 py-3 text-sm font-medium text-white shadow-lg ${
+              toast.type === "success" ? "bg-green-600" : "bg-red-600"
+            }`}
+          >
+            {toast.type === "success" ? (
+              <CheckCircle2 className="h-4 w-4" />
+            ) : (
+              <XCircle className="h-4 w-4" />
+            )}
+            {toast.message}
+          </div>
+        </div>
+      )}
     </AppLayout>
   )
 }
