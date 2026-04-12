@@ -11,7 +11,7 @@ export async function POST(
     const { id: friendId } = await params
     const auth = await getAuthenticatedOrgId()
     if (!auth.ok) return auth.response
-    const { supabase } = auth
+    const { supabase, orgId } = auth
 
     const { message } = await request.json()
     if (!message) return NextResponse.json({ error: "メッセージを入力してください" }, { status: 400 })
@@ -40,6 +40,22 @@ export async function POST(
       [{ type: "text", text: message }],
       { accessToken: lineAccount.channel_access_token }
     )
+
+    // 個別メッセージ履歴に「送信済み」として記録
+    // event_type="message_send" は友だち詳細画面で outgoing 扱いされる。
+    // 送信は既に成功しているので、ログ挿入が失敗してもユーザー応答には影響させない。
+    try {
+      await supabase.from("message_logs").insert({
+        organization_id: orgId,
+        friend_id: friendId,
+        line_user_id: friend.line_user_id,
+        event_type: "message_send",
+        message_type: "text",
+        content: message,
+      })
+    } catch (err) {
+      console.error("Individual message log insert failed:", err)
+    }
 
     return NextResponse.json({ success: true })
   } catch (error) {

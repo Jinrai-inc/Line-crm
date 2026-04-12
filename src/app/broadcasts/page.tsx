@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
+import Link from "next/link"
 import { useAccentColor } from "@/hooks/use-accent-color"
 import { AppLayout } from "@/components/layout/app-layout"
 import { PageHeader } from "@/components/layout/page-header"
@@ -893,6 +894,7 @@ export default function BroadcastsPage() {
                       <TableHead className="text-right">送信数</TableHead>
                       <TableHead>ステータス</TableHead>
                       <TableHead>送信日時</TableHead>
+                      <TableHead className="w-24 text-right">詳細</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -922,6 +924,14 @@ export default function BroadcastsPage() {
                           </TableCell>
                           <TableCell className="text-gray-500">
                             {formatDateTime(broadcast.sent_at)}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Button variant="outline" size="sm" asChild>
+                              <Link href={`/broadcasts/${broadcast.id}`}>
+                                <Eye className="h-3 w-3 mr-1" />
+                                詳細
+                              </Link>
+                            </Button>
                           </TableCell>
                         </TableRow>
                       )

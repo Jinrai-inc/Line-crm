@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
+import type { SupabaseClient } from "@supabase/supabase-js"
 import { getAuthenticatedOrgId } from "@/lib/api/auth"
-import { pushMessage, multicast, broadcast } from "@/lib/line/client"
+import { pushMessage, broadcast } from "@/lib/line/client"
 import { createFileDeliveryMessage } from "@/lib/line/flex-templates"
 
 function replaceNameTag(text: string, displayName: string): string {
@@ -12,6 +13,55 @@ function messageContainsNameTag(messages: unknown[]): boolean {
     const msg = m as { type?: string; text?: string }
     return msg.type === "text" && msg.text && (/\{name\}/.test(msg.text) || /\{名前\}/.test(msg.text))
   })
+}
+
+// 配信メッセージの履歴用要約テキスト（個別メッセージ履歴に表示される）
+function buildLogContent(
+  messageText: string | undefined,
+  messageType: string | undefined,
+  fileName: string | undefined
+): string {
+  if (messageType === "image") return messageText || "[画像]"
+  if (messageType === "video") return messageText || "[動画]"
+  if (messageType === "pdf") return messageText || `[PDF] ${fileName || ""}`.trim()
+  return messageText || "[配信メッセージ]"
+}
+
+// 配信送信後に個別メッセージ履歴（message_logs）にまとめて記録する
+// event_type="message_send" は友だち詳細画面で「送信済み」として扱われるため、
+// これを入れないと配信が個別履歴に一切表示されない。
+// raw_event に broadcast_id を入れておくことで、後から配信別の到達状況を
+// 集計できるようにする（/broadcasts/[id] 詳細画面などで使用）。
+async function logBroadcastDelivery(
+  supabase: SupabaseClient,
+  orgId: string,
+  broadcastId: string | null,
+  friends: Array<{ id: string | null; line_user_id: string }>,
+  content: string,
+  messageType: string
+): Promise<void> {
+  if (friends.length === 0) return
+  const rows = friends.map((f) => ({
+    organization_id: orgId,
+    friend_id: f.id,
+    line_user_id: f.line_user_id,
+    event_type: "message_send",
+    message_type: messageType,
+    content,
+    raw_event: broadcastId ? { broadcast_id: broadcastId } : null,
+  }))
+  try {
+    // 大量件数にも耐えられるよう 500 件ずつ insert
+    for (let i = 0; i < rows.length; i += 500) {
+      const batch = rows.slice(i, i + 500)
+      const { error } = await supabase.from("message_logs").insert(batch)
+      if (error) {
+        console.error("logBroadcastDelivery: insert failed", error)
+      }
+    }
+  } catch (err) {
+    console.error("logBroadcastDelivery threw", err)
+  }
 }
 
 export const maxDuration = 300
@@ -132,23 +182,58 @@ export async function POST(request: NextRequest) {
       }
 
       const hasNameTag = messageContainsNameTag(messages)
+      const logContent = buildLogContent(messageText, messageType, fileName)
+      const logMessageType = messageType || "text"
 
-      if (hasNameTag) {
-        // {name}タグがある場合は個別送信でパーソナライズ
-        let friendQuery = supabase
+      if (targetType === "all" && !hasNameTag) {
+        // 全員配信（名前タグなし）— LINE の broadcast API を使用
+        // 個別追跡はできないが、個別メッセージ履歴に反映させるため active 友だち
+        // 全員へ message_logs を楽観的に記録する。
+        await broadcast(messages, { accessToken: lineAccount.channel_access_token })
+
+        const { data: allActive } = await supabase
           .from("friends")
-          .select("line_user_id, display_name, custom_name")
+          .select("id, line_user_id")
           .eq("organization_id", orgId)
           .eq("status", "active")
 
-        if (targetType === "tag" && targetFilter?.tagIds) {
+        const activeFriends = (allActive || []) as Array<{ id: string; line_user_id: string }>
+        sentCount = activeFriends.length
+        await logBroadcastDelivery(
+          supabase,
+          orgId,
+          broadcastRecord.id as string,
+          activeFriends,
+          logContent,
+          logMessageType
+        )
+      } else {
+        // タグ指定 / セミナー参加者 / 全員（パーソナライズあり）の配信は
+        // 全て個別 pushMessage で送信する。
+        //
+        // 以前は multicast で500件ずつ送っていたが、LINE の multicast は HTTP 200
+        // を返しても実配信に失敗するユーザーが含まれていても判別できず、
+        // 「141人に送信済み」と表示されても実際には十数名にしか届いていない
+        // という事象が発生していた。個別 push なら Promise.allSettled で
+        // ユーザー単位の成功/失敗を把握できる。
+        let friendQuery = supabase
+          .from("friends")
+          .select("id, line_user_id, display_name, custom_name")
+          .eq("organization_id", orgId)
+          .eq("status", "active")
+
+        if (targetType === "tag" && targetFilter?.tagIds && Array.isArray(targetFilter.tagIds) && targetFilter.tagIds.length > 0) {
           const { data: taggedFriends } = await supabase
             .from("friend_tags")
             .select("friend_id")
             .in("tag_id", targetFilter.tagIds)
-          if (taggedFriends && taggedFriends.length > 0) {
-            const friendIds = taggedFriends.map((ft: { friend_id: string | null }) => ft.friend_id).filter((id): id is string => id !== null)
+          const friendIds = (taggedFriends || [])
+            .map((ft: { friend_id: string | null }) => ft.friend_id)
+            .filter((id): id is string => id !== null)
+          if (friendIds.length > 0) {
             friendQuery = friendQuery.in("id", friendIds)
+          } else {
+            friendQuery = friendQuery.eq("id", "00000000-0000-0000-0000-000000000000")
           }
         } else if (targetType === "seminar" && targetFilter?.seminarId) {
           const { data: attendances } = await supabase
@@ -156,94 +241,75 @@ export async function POST(request: NextRequest) {
             .select("friend_id")
             .eq("seminar_id", targetFilter.seminarId)
             .neq("status", "cancelled")
-          if (attendances && attendances.length > 0) {
-            const friendIds = attendances.map((a: { friend_id: string | null }) => a.friend_id).filter((id): id is string => id !== null)
+          const friendIds = (attendances || [])
+            .map((a: { friend_id: string | null }) => a.friend_id)
+            .filter((id): id is string => id !== null)
+          if (friendIds.length > 0) {
             friendQuery = friendQuery.in("id", friendIds)
           } else {
             friendQuery = friendQuery.eq("id", "00000000-0000-0000-0000-000000000000")
           }
         }
+        // targetType==="all" && hasNameTag の場合は絞り込みなし（全 active 友だち）
 
         const { data: targetFriends } = await friendQuery
-        if (targetFriends && targetFriends.length > 0) {
-          // 10件ずつ並列で個別送信
-          for (let i = 0; i < targetFriends.length; i += 10) {
-            const batch = targetFriends.slice(i, i + 10)
-            const results = await Promise.allSettled(
-              batch.map((f: { line_user_id: string; display_name?: string; custom_name?: string }) => {
-                const name = f.custom_name || f.display_name || "お客様"
-                const personalizedMessages = messages.map((m) => {
+        const friends = (targetFriends || []) as Array<{
+          id: string
+          line_user_id: string
+          display_name: string | null
+          custom_name: string | null
+        }>
+
+        // 成功したユーザーだけを追跡して、最後に message_logs へまとめて挿入する
+        const successfulFriends: Array<{ id: string; line_user_id: string }> = []
+
+        // 15 件並列 × 逐次バッチで送信（fetchWithRetry で 429/5xx は自動リトライ済）
+        const concurrency = 15
+        for (let i = 0; i < friends.length; i += concurrency) {
+          const batch = friends.slice(i, i + concurrency)
+          const results = await Promise.allSettled(
+            batch.map((f) => {
+              const name = f.custom_name || f.display_name || "お客様"
+              const personalizedMessages = hasNameTag
+                ? messages.map((m) => {
                   const msg = m as { type?: string; text?: string }
                   if (msg.type === "text" && msg.text) {
                     return { ...msg, text: replaceNameTag(msg.text, name) }
                   }
                   return m
                 })
-                return pushMessage(f.line_user_id, personalizedMessages, { accessToken: lineAccount.channel_access_token })
+                : messages
+              return pushMessage(f.line_user_id, personalizedMessages, {
+                accessToken: lineAccount.channel_access_token,
               })
-            )
-            sentCount += results.filter(r => r.status === "fulfilled").length
-            failedCount += results.filter(r => r.status === "rejected").length
-          }
-        }
-      } else if (targetType === "all") {
-        // 全員配信（名前タグなし）
-        await broadcast(messages, { accessToken: lineAccount.channel_access_token })
-        const { count } = await supabase
-          .from("friends")
-          .select("*", { count: "exact", head: true })
-          .eq("organization_id", orgId)
-          .eq("status", "active")
-        sentCount = count || 0
-      } else {
-        // ターゲット配信（名前タグなし）
-        let friendQuery = supabase
-          .from("friends")
-          .select("line_user_id")
-          .eq("organization_id", orgId)
-          .eq("status", "active")
-
-        if (targetType === "tag" && targetFilter?.tagIds) {
-          const { data: taggedFriends } = await supabase
-            .from("friend_tags")
-            .select("friend_id")
-            .in("tag_id", targetFilter.tagIds)
-
-          if (taggedFriends && taggedFriends.length > 0) {
-            const friendIds = taggedFriends.map((ft: { friend_id: string | null }) => ft.friend_id).filter((id): id is string => id !== null)
-            friendQuery = friendQuery.in("id", friendIds)
-          }
-        } else if (targetType === "seminar" && targetFilter?.seminarId) {
-          const { data: attendances } = await supabase
-            .from("attendances")
-            .select("friend_id")
-            .eq("seminar_id", targetFilter.seminarId)
-            .neq("status", "cancelled")
-
-          if (attendances && attendances.length > 0) {
-            const friendIds = attendances.map((a: { friend_id: string | null }) => a.friend_id).filter((id): id is string => id !== null)
-            friendQuery = friendQuery.in("id", friendIds)
-          } else {
-            friendQuery = friendQuery.eq("id", "00000000-0000-0000-0000-000000000000")
-          }
-        }
-
-        const { data: targetFriends } = await friendQuery
-
-        if (targetFriends && targetFriends.length > 0) {
-          const userIds = targetFriends.map((f: { line_user_id: string }) => f.line_user_id)
-
-          // 500件ずつバッチ送信
-          for (let i = 0; i < userIds.length; i += 500) {
-            const batch = userIds.slice(i, i + 500)
-            try {
-              await multicast(batch, messages, { accessToken: lineAccount.channel_access_token })
-              sentCount += batch.length
-            } catch {
-              failedCount += batch.length
+            })
+          )
+          results.forEach((r, idx) => {
+            if (r.status === "fulfilled") {
+              sentCount += 1
+              successfulFriends.push({
+                id: batch[idx].id,
+                line_user_id: batch[idx].line_user_id,
+              })
+            } else {
+              failedCount += 1
+              console.error(
+                `Broadcast push failed for ${batch[idx].line_user_id}:`,
+                r.reason
+              )
             }
-          }
+          })
         }
+
+        // 成功したユーザー分だけ message_logs にまとめて記録
+        await logBroadcastDelivery(
+          supabase,
+          orgId,
+          broadcastRecord.id as string,
+          successfulFriends,
+          logContent,
+          logMessageType
+        )
       }
 
       // 配信結果を更新
