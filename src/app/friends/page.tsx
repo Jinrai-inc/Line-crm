@@ -100,6 +100,16 @@ const STATUS_MAP: Record<string, { label: string; variant: "default" | "destruct
 
 const PAGE_SIZE_OPTIONS = [20, 50, 100, 200] as const
 
+// 並び順セレクトの選択肢
+// 値は "<field>-<dir>" の複合値。変更時に parseSortValue で分解して state に反映する。
+const SORT_OPTIONS: ReadonlyArray<{ value: string; field: SortField; dir: SortDirection; label: string }> = [
+  { value: "first_added_at-desc", field: "first_added_at", dir: "desc", label: "追加日が新しい順" },
+  { value: "first_added_at-asc", field: "first_added_at", dir: "asc", label: "追加日が古い順" },
+  { value: "last_message_at-desc", field: "last_message_at", dir: "desc", label: "最終やりとりが新しい順" },
+  { value: "last_message_at-asc", field: "last_message_at", dir: "asc", label: "最終やりとりが古い順" },
+  { value: "display_name-asc", field: "display_name", dir: "asc", label: "名前順（あ→わ）" },
+]
+
 // ── Main Page Component ────────────────────────────────────────────────
 
 export default function FriendsPage() {
@@ -224,6 +234,21 @@ export default function FriendsPage() {
       setSortField(field)
       setSortDir("desc")
     }
+    setPage(1)
+  }
+
+  // 並び順セレクトの現在値とハンドラ
+  // 現在の sortField + sortDir が SORT_OPTIONS のいずれかに一致しない場合
+  // （例: 古い sortDir で last_message_at を asc にしていた等）はフォールバックで
+  // 「追加日が新しい順」を選択値として返す。エラーを起こさないための保険。
+  const currentSortValue =
+    SORT_OPTIONS.find((o) => o.field === sortField && o.dir === sortDir)?.value
+      ?? "first_added_at-desc"
+  const handleSortValueChange = (value: string) => {
+    const opt = SORT_OPTIONS.find((o) => o.value === value)
+    if (!opt) return
+    setSortField(opt.field)
+    setSortDir(opt.dir)
     setPage(1)
   }
 
@@ -404,8 +429,8 @@ export default function FriendsPage() {
 
       {/* ── Filters ─────────────────────────────────────────────── */}
       <div className="space-y-4 mb-6">
-        {/* Search + Status Tabs */}
-        <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
+        {/* Search + Status Tabs + Sort */}
+        <div className="flex flex-col sm:flex-row sm:flex-wrap gap-3 items-start sm:items-center">
           <div className="relative w-full sm:w-80">
             <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-gray-400" />
             <Input
@@ -423,6 +448,24 @@ export default function FriendsPage() {
               <TabsTrigger value="unfollowed">フォロー解除</TabsTrigger>
             </TabsList>
           </Tabs>
+          <div className="flex items-center gap-2 sm:ml-auto w-full sm:w-auto">
+            <Label className="text-xs text-gray-500 whitespace-nowrap flex items-center gap-1">
+              <ArrowUpDownIcon className="size-3.5" />
+              並び順
+            </Label>
+            <Select value={currentSortValue} onValueChange={handleSortValueChange}>
+              <SelectTrigger className="h-9 w-full sm:w-[200px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {SORT_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
 
         {/* Tag filters */}

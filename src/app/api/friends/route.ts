@@ -9,13 +9,32 @@ export async function GET(request: NextRequest) {
     const { supabase, orgId } = auth
 
     const { searchParams } = new URL(request.url)
-    const page = parseInt(searchParams.get("page") || "1")
-    const pageSize = parseInt(searchParams.get("pageSize") || "20")
+
+    // 数値パラメータの安全なパース（NaN / 負値を防ぐ）
+    const pageRaw = parseInt(searchParams.get("page") || "1", 10)
+    const page = Number.isFinite(pageRaw) && pageRaw >= 1 ? pageRaw : 1
+    const pageSizeRaw = parseInt(searchParams.get("pageSize") || "20", 10)
+    const pageSize = Number.isFinite(pageSizeRaw) && pageSizeRaw >= 1 && pageSizeRaw <= 500
+      ? pageSizeRaw
+      : 20
+
     const search = searchParams.get("search") || ""
     const status = searchParams.get("status") || ""
     const tagIds = searchParams.get("tagIds") || ""
-    const sortBy = searchParams.get("sortBy") || "created_at"
-    const sortOrder = searchParams.get("sortOrder") || "desc"
+
+    // ソートキーのホワイトリスト検証
+    // 任意のカラム名を受け入れると Supabase が存在しない列でエラーを返すため、
+    // 確実にエラーが起きないよう許可済みのカラムのみ受け付ける。
+    const ALLOWED_SORT_FIELDS = new Set([
+      "first_added_at",
+      "last_message_at",
+      "created_at",
+      "updated_at",
+      "display_name",
+    ])
+    const sortByInput = searchParams.get("sortBy") || "first_added_at"
+    const sortBy = ALLOWED_SORT_FIELDS.has(sortByInput) ? sortByInput : "first_added_at"
+    const sortOrder = searchParams.get("sortOrder") === "asc" ? "asc" : "desc"
 
     const from = (page - 1) * pageSize
     const to = from + pageSize - 1
@@ -38,8 +57,10 @@ export async function GET(request: NextRequest) {
     }
 
     // ソート
+    // last_message_at 等で null があっても末尾に回すことで、
+    // 「新しい順」「古い順」のどちらでも未交流のユーザーが先頭に来ないようにする。
     const ascending = sortOrder === "asc"
-    query = query.order(sortBy, { ascending })
+    query = query.order(sortBy, { ascending, nullsFirst: false })
 
     // ページネーション
     query = query.range(from, to)
