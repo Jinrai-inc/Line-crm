@@ -98,7 +98,7 @@ const STATUS_MAP: Record<string, { label: string; variant: "default" | "destruct
   unfollowed: { label: "フォロー解除", variant: "secondary" },
 }
 
-const LIMIT = 20
+const PAGE_SIZE_OPTIONS = [20, 50, 100, 200] as const
 
 // ── Main Page Component ────────────────────────────────────────────────
 
@@ -108,6 +108,7 @@ export default function FriendsPage() {
   const [friends, setFriends] = useState<Friend[]>([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState<number>(20)
   const [loading, setLoading] = useState(true)
 
   const [search, setSearch] = useState("")
@@ -126,7 +127,8 @@ export default function FriendsPage() {
   const [addLoading, setAddLoading] = useState(false)
 
   const [bulkTagDialogOpen, setBulkTagDialogOpen] = useState(false)
-  const [bulkTagId, setBulkTagId] = useState("")
+  const [bulkTagIds, setBulkTagIds] = useState<string[]>([])
+  const [bulkTagSaving, setBulkTagSaving] = useState(false)
 
   // ── Fetch friends ──────────────────────────────────────────────────
 
@@ -135,7 +137,7 @@ export default function FriendsPage() {
     try {
       const params = new URLSearchParams({
         page: String(page),
-        pageSize: String(LIMIT),
+        pageSize: String(pageSize),
         sortBy: sortField,
         sortOrder: sortDir,
       })
@@ -160,7 +162,7 @@ export default function FriendsPage() {
     } finally {
       setLoading(false)
     }
-  }, [page, search, statusFilter, selectedTagIds, sortField, sortDir])
+  }, [page, pageSize, search, statusFilter, selectedTagIds, sortField, sortDir])
 
   useEffect(() => {
     fetchFriends()
@@ -191,7 +193,12 @@ export default function FriendsPage() {
 
   // ── Helpers ────────────────────────────────────────────────────────
 
-  const totalPages = Math.max(1, Math.ceil(total / LIMIT))
+  const totalPages = Math.max(1, Math.ceil(total / pageSize))
+
+  const handlePageSizeChange = (value: string) => {
+    setPageSize(parseInt(value, 10))
+    setPage(1)
+  }
 
   const toggleSelect = (id: string) => {
     setSelectedIds((prev) => {
@@ -278,24 +285,46 @@ export default function FriendsPage() {
   }
 
   const handleBulkTagAssign = async () => {
-    if (!bulkTagId || selectedIds.size === 0) return
+    if (bulkTagIds.length === 0 || selectedIds.size === 0) return
+    setBulkTagSaving(true)
     try {
-      await Promise.all(
-        Array.from(selectedIds).map((friendId) =>
-          fetch(`/api/friends/${friendId}/tags`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ tagId: bulkTagId }),
-          })
-        )
-      )
+      const friendIds = Array.from(selectedIds)
+      const requests: Promise<Response>[] = []
+      for (const friendId of friendIds) {
+        for (const tagId of bulkTagIds) {
+          requests.push(
+            fetch(`/api/friends/${friendId}/tags`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ tagId }),
+            })
+          )
+        }
+      }
+      await Promise.all(requests)
       setBulkTagDialogOpen(false)
-      setBulkTagId("")
+      setBulkTagIds([])
       setSelectedIds(new Set())
       fetchFriends()
     } catch {
       // handle error
+    } finally {
+      setBulkTagSaving(false)
     }
+  }
+
+  const toggleBulkTag = (tagId: string) => {
+    setBulkTagIds((prev) =>
+      prev.includes(tagId) ? prev.filter((id) => id !== tagId) : [...prev, tagId]
+    )
+  }
+
+  const selectAllOnPage = () => {
+    setSelectedIds(new Set(friends.map((f) => f.id)))
+  }
+
+  const clearSelection = () => {
+    setSelectedIds(new Set())
   }
 
   // ── Render ─────────────────────────────────────────────────────────
@@ -429,45 +458,83 @@ export default function FriendsPage() {
 
         {/* Bulk actions bar */}
         {selectedIds.size > 0 && (
-          <div className="flex items-center gap-3 rounded-lg bg-gray-50 border border-gray-200 px-4 py-2">
+          <div className="flex flex-wrap items-center gap-3 rounded-lg bg-gray-50 border border-gray-200 px-4 py-2">
             <span className="text-sm text-gray-600">
               {selectedIds.size}件選択中
             </span>
+            <Button variant="ghost" size="sm" onClick={selectAllOnPage}>
+              このページ全て選択
+            </Button>
+            <Button variant="ghost" size="sm" onClick={clearSelection}>
+              選択解除
+            </Button>
             <Dialog open={bulkTagDialogOpen} onOpenChange={setBulkTagDialogOpen}>
               <DialogTrigger asChild>
                 <Button variant="outline" size="sm">
                   <TagIcon />
-                  タグ一括設定
+                  タグ一括追加
                 </Button>
               </DialogTrigger>
               <DialogContent>
                 <DialogHeader>
-                  <DialogTitle>タグ一括設定</DialogTitle>
+                  <DialogTitle>タグ一括追加</DialogTitle>
                   <DialogDescription>
-                    選択した{selectedIds.size}件の友だちにタグを設定します。
+                    選択した{selectedIds.size}件の友だちに、チェックしたタグをまとめて付与します。
                   </DialogDescription>
                 </DialogHeader>
                 <div className="py-4">
-                  <Label>タグを選択</Label>
-                  <Select value={bulkTagId} onValueChange={setBulkTagId}>
-                    <SelectTrigger className="mt-2">
-                      <SelectValue placeholder="タグを選択..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {allTags.map((tag) => (
-                        <SelectItem key={tag.id} value={tag.id}>
+                  <Label className="text-sm font-medium">タグを選択（複数可）</Label>
+                  <div className="mt-2 flex flex-wrap gap-2 rounded-md border p-2 max-h-64 overflow-y-auto">
+                    {allTags.length === 0 && (
+                      <span className="text-xs text-gray-400 py-1">
+                        タグがありません
+                      </span>
+                    )}
+                    {allTags.map((tag) => {
+                      const isSelected = bulkTagIds.includes(tag.id)
+                      return (
+                        <button
+                          key={tag.id}
+                          type="button"
+                          onClick={() => toggleBulkTag(tag.id)}
+                          className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium border transition-colors ${
+                            isSelected
+                              ? "text-white border-transparent"
+                              : "text-gray-700 border-gray-200 bg-white hover:bg-gray-50"
+                          }`}
+                          style={
+                            isSelected
+                              ? { backgroundColor: tag.color }
+                              : undefined
+                          }
+                        >
                           {tag.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                          {isSelected && <XIcon className="ml-1 size-3" />}
+                        </button>
+                      )
+                    })}
+                  </div>
+                  {bulkTagIds.length > 0 && (
+                    <p className="mt-2 text-xs text-gray-500">
+                      {bulkTagIds.length}個のタグを{selectedIds.size}件に付与します
+                    </p>
+                  )}
                 </div>
                 <DialogFooter>
-                  <Button variant="outline" onClick={() => setBulkTagDialogOpen(false)}>
+                  <Button
+                    variant="outline"
+                    onClick={() => setBulkTagDialogOpen(false)}
+                    disabled={bulkTagSaving}
+                  >
                     キャンセル
                   </Button>
-                  <Button onClick={handleBulkTagAssign} disabled={!bulkTagId} style={{ backgroundColor: accentColor }} className="text-white hover:opacity-90">
-                    設定する
+                  <Button
+                    onClick={handleBulkTagAssign}
+                    disabled={bulkTagIds.length === 0 || bulkTagSaving}
+                    style={{ backgroundColor: accentColor }}
+                    className="text-white hover:opacity-90"
+                  >
+                    {bulkTagSaving ? "付与中..." : "付与する"}
                   </Button>
                 </DialogFooter>
               </DialogContent>
@@ -737,11 +804,30 @@ export default function FriendsPage() {
       </div>
 
       {/* ── Pagination ──────────────────────────────────────────── */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between mt-6">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mt-6">
+        <div className="flex items-center gap-3">
           <p className="text-sm text-gray-500">
-            全{total}件中 {(page - 1) * LIMIT + 1}〜{Math.min(page * LIMIT, total)}件
+            {total > 0
+              ? `全${total}件中 ${(page - 1) * pageSize + 1}〜${Math.min(page * pageSize, total)}件`
+              : "0件"}
           </p>
+          <div className="flex items-center gap-2">
+            <Label className="text-xs text-gray-500 whitespace-nowrap">表示件数</Label>
+            <Select value={String(pageSize)} onValueChange={handlePageSizeChange}>
+              <SelectTrigger className="h-8 w-[84px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {PAGE_SIZE_OPTIONS.map((size) => (
+                  <SelectItem key={size} value={String(size)}>
+                    {size}件
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        {totalPages > 1 && (
           <div className="flex items-center gap-1">
             <Button
               variant="outline"
@@ -787,8 +873,8 @@ export default function FriendsPage() {
               <ChevronRightIcon className="size-4" />
             </Button>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </AppLayout>
   )
 }

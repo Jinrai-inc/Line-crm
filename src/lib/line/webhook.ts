@@ -724,6 +724,23 @@ async function handlePostback(
           })
       }
 
+      // セミナーに紐づいたタグを自動付与
+      const seminarTagIds = (seminar as { tag_ids?: string[] | null }).tag_ids
+      if (Array.isArray(seminarTagIds) && seminarTagIds.length > 0) {
+        try {
+          await supabase.from("friend_tags").upsert(
+            seminarTagIds.map((tagId) => ({
+              friend_id: friend.id,
+              tag_id: tagId,
+              auto_assigned: true,
+            })),
+            { onConflict: "friend_id,tag_id" }
+          )
+        } catch (tagError) {
+          console.error("Seminar auto-tag assign error:", tagError)
+        }
+      }
+
       // 申込確認メッセージ送信
       if (event.replyToken) {
         const confirmMsg = createApplyConfirmMessage({
