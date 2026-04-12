@@ -1175,52 +1175,49 @@ async function handlePostback(
       const hasRewardContent = choice.rewardMessage || choice.rewardUrl || choice.file
       const hasReward = question.hasReward !== false && hasRewardContent
 
-      // replyToken で自動返信メッセージ・特典メッセージを送信
-      let replyUsed = false
-      if (event.replyToken && (choice.autoReplyMessage || hasReward)) {
-        const replyMessages: unknown[] = []
+      // 自動返信・特典・セミナー案内・次の質問 を 1 回の reply にまとめて送信する。
+      // LINE の reply API は 1 回あたり最大 5 メッセージまで送信でき、
+      // 本フローで積む可能性がある最大構成（autoReply + file + reward + seminar + nextQuestion）
+      // がちょうど 5 通に収まる。まとめて送ることで、
+      //   - 配信順序を確定できる（特典 → 次の設問 の順で必ず表示される）
+      //   - pushMessage の silent failure を避けられる
+      //   - 次の設問が特典の後に必ず届く、というユーザー要件を満たせる
+      const replyMessages: unknown[] = []
 
-        // 選択肢ごとの自動返信メッセージ
-        if (choice.autoReplyMessage) {
-          replyMessages.push({ type: "text", text: replaceMessageTags(choice.autoReplyMessage, surveyUserName) })
-        }
+      // 1. 選択肢ごとの自動返信メッセージ
+      if (choice.autoReplyMessage) {
+        replyMessages.push({
+          type: "text",
+          text: replaceMessageTags(choice.autoReplyMessage, surveyUserName),
+        })
+      }
 
-        // 添付ファイルがある場合は画像/PDFメッセージを送信
-        if (hasReward && choice.file && choice.file.url) {
-          if (choice.file.mimeType?.startsWith("image/")) {
-            replyMessages.push({
-              type: "image",
-              originalContentUrl: choice.file.url,
-              previewImageUrl: choice.file.url,
-            })
-          } else {
-            // PDF等のファイルはURLをテキストで送信
-            replyMessages.push({
-              type: "text",
-              text: `📎 ${choice.file.fileName || "ファイル"}\n${choice.file.url}`,
-            })
-          }
-        }
-
-        // 特典メッセージ or URL がある場合
-        if (hasReward && (choice.rewardMessage || choice.rewardUrl)) {
-          const rewardMsg = choice.rewardMessage
-            ? replaceMessageTags(choice.rewardMessage, surveyUserName)
-            : ""
-          replyMessages.push(createSurveyRewardMessage(rewardMsg, choice.rewardUrl))
-        }
-
-        if (replyMessages.length > 0) {
-          await replyMessage(
-            event.replyToken,
-            replyMessages,
-            { accessToken: context.channelAccessToken }
-          )
-          replyUsed = true
+      // 2. 添付ファイルがある場合は画像/PDFメッセージを送信
+      if (hasReward && choice.file && choice.file.url) {
+        if (choice.file.mimeType?.startsWith("image/")) {
+          replyMessages.push({
+            type: "image",
+            originalContentUrl: choice.file.url,
+            previewImageUrl: choice.file.url,
+          })
+        } else {
+          // PDF等のファイルはURLをテキストで送信
+          replyMessages.push({
+            type: "text",
+            text: `📎 ${choice.file.fileName || "ファイル"}\n${choice.file.url}`,
+          })
         }
       }
 
-      // セミナー案内の送信（選択肢にセミナーが紐付いている場合）
+      // 3. 特典メッセージ or URL がある場合
+      if (hasReward && (choice.rewardMessage || choice.rewardUrl)) {
+        const rewardMsg = choice.rewardMessage
+          ? replaceMessageTags(choice.rewardMessage, surveyUserName)
+          : ""
+        replyMessages.push(createSurveyRewardMessage(rewardMsg, choice.rewardUrl))
+      }
+
+      // 4. セミナー案内（選択肢にセミナーが紐付いている場合）
       if (choice.seminarIds && choice.seminarIds.length > 0) {
         try {
           const { data: selectedSeminars } = await supabase
@@ -1249,55 +1246,79 @@ async function handlePostback(
                 }
               })
             )
-            const seminarMessage = createSeminarListMessage(seminarInfos)
-            await pushMessage(userId, [seminarMessage], {
-              accessToken: context.channelAccessToken,
-            })
+            replyMessages.push(createSeminarListMessage(seminarInfos))
           }
         } catch {
-          // セミナー案内送信失敗は無視
+          // セミナー情報取得失敗は無視
         }
       }
 
-      // 次の質問があれば送信（段階的送信・条件分岐対応）
+      // 5. 次の質問 or 完了メッセージ
       const nextQIndex = choice.nextQuestionIndex !== undefined
         ? choice.nextQuestionIndex  // 分岐指定あり（-1 = 終了）
         : qIndex + 1               // 順番通り
       if (nextQIndex >= 0 && nextQIndex < questions.length) {
         const nextQuestion = questions[nextQIndex]
-        const nextMessage = createSingleQuestionMessage({
-          surveyId,
-          surveyTitle: surveyTitle || "アンケート",
-          question: nextQuestion,
-          questionIndex: nextQIndex,
-          totalQuestions: questions.length,
+        replyMessages.push(
+          createSingleQuestionMessage({
+            surveyId,
+            surveyTitle: surveyTitle || "アンケート",
+            question: nextQuestion,
+            questionIndex: nextQIndex,
+            totalQuestions: questions.length,
+          })
+        )
+      } else if (replyMessages.length === 0) {
+        // 全問回答完了 & 自動返信・特典・セミナーなし → お礼メッセージ
+        replyMessages.push({
+          type: "text",
+          text: "アンケートにご回答いただきありがとうございます！全ての質問にお答えいただきました。",
         })
+      }
 
-        if (!replyUsed && event.replyToken) {
-          // 自動返信・特典なし → replyTokenで次の質問を送信
-          await replyMessage(
-            event.replyToken,
-            [nextMessage],
-            { accessToken: context.channelAccessToken }
-          )
-        } else {
-          // 自動返信/特典送信済み → pushMessageで次の質問を送信
+      // まとめて送信: reply で最大 5 通、overflow は push にフォールバック
+      if (replyMessages.length > 0) {
+        const firstBatch = replyMessages.slice(0, 5)
+        const overflow = replyMessages.slice(5)
+
+        if (event.replyToken) {
           try {
-            await pushMessage(userId, [nextMessage], {
+            await replyMessage(
+              event.replyToken,
+              firstBatch,
+              { accessToken: context.channelAccessToken }
+            )
+          } catch (err) {
+            console.error("Survey reply failed:", err)
+            // reply が失敗した場合のフォールバック: push で送信
+            try {
+              await pushMessage(userId, firstBatch, {
+                accessToken: context.channelAccessToken,
+              })
+            } catch {
+              // push失敗も無視（ログのみ）
+            }
+          }
+        } else {
+          // replyToken が無い場合は全て push
+          try {
+            await pushMessage(userId, firstBatch, {
               accessToken: context.channelAccessToken,
             })
           } catch {
             // push失敗は無視
           }
         }
-      } else {
-        // 全問回答完了
-        if (!replyUsed && event.replyToken) {
-          await replyMessage(
-            event.replyToken,
-            [{ type: "text", text: "アンケートにご回答いただきありがとうございます！全ての質問にお答えいただきました。" }],
-            { accessToken: context.channelAccessToken }
-          )
+
+        // overflow（通常は発生しないが安全のため）
+        if (overflow.length > 0) {
+          try {
+            await pushMessage(userId, overflow, {
+              accessToken: context.channelAccessToken,
+            })
+          } catch {
+            // push失敗は無視
+          }
         }
       }
       break
