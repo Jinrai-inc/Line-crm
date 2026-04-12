@@ -348,35 +348,25 @@ export default function SurveyResultsPage({ params }: { params: Promise<{ id: st
                       <span className="text-xs text-gray-400">{q.total}件の回答</span>
                     </div>
 
-                    <div className="space-y-2">
+                    <div className="space-y-4">
                       {q.choiceCounts.map((c, cIdx) => {
                         const rawChoice = rawChoices[cIdx]
                         const hasReward = rawChoice ? choiceHasReward(rawChoice) : false
                         return (
-                          <div key={cIdx} className="space-y-1">
+                          <div key={cIdx} className="space-y-1.5">
                             <div className="flex items-center justify-between text-sm gap-2">
                               <span className="flex items-center gap-1.5">
                                 {c.text}
                                 {hasReward && (
-                                  <Gift className="h-3 w-3 text-[#06C755]" />
+                                  <Badge className="text-[10px] bg-[#06C755]/10 text-[#06C755] border border-[#06C755]/30 gap-0.5 px-1.5 py-0">
+                                    <Gift className="h-2.5 w-2.5" />
+                                    特典あり
+                                  </Badge>
                                 )}
                               </span>
-                              <div className="flex items-center gap-2 shrink-0">
-                                <span className="text-gray-500 text-xs">
-                                  {c.count}件 ({c.percentage}%)
-                                </span>
-                                {hasReward && c.count > 0 && (
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="h-6 text-[11px] px-2"
-                                    onClick={() => openResendDialog(qIdx, cIdx)}
-                                  >
-                                    <Send className="h-3 w-3 mr-1" />
-                                    特典を再送
-                                  </Button>
-                                )}
-                              </div>
+                              <span className="text-gray-500 text-xs shrink-0">
+                                {c.count}件 ({c.percentage}%)
+                              </span>
                             </div>
                             <div className="h-6 bg-gray-100 rounded-full overflow-hidden">
                               <div
@@ -389,6 +379,17 @@ export default function SurveyResultsPage({ params }: { params: Promise<{ id: st
                                 {c.percentage > 15 ? `${c.percentage}%` : ""}
                               </div>
                             </div>
+                            {hasReward && c.count > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => openResendDialog(qIdx, cIdx)}
+                                className="w-full flex items-center justify-center gap-2 h-9 rounded-md bg-[#06C755] hover:bg-[#05B34C] active:bg-[#04A045] text-white text-xs font-semibold shadow-sm transition-colors"
+                              >
+                                <Gift className="h-4 w-4" />
+                                この回答者 {c.count}人 に特典を再送する
+                                <Send className="h-3.5 w-3.5" />
+                              </button>
+                            )}
                           </div>
                         )
                       })}
