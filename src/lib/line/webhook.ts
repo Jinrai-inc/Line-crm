@@ -791,6 +791,21 @@ async function handlePostback(
             { accessToken: context.channelAccessToken }
           )
         }
+        // 「すでにお申込み済み」の自動返信を送信したことを message_logs に記録する。
+        // この event_type は「未対応」タブで管理者に通知を出すために使う
+        // （キャンセル希望など、運営が手動対応すべきケースを検出）。
+        try {
+          await supabase.from("message_logs").insert({
+            organization_id: context.organizationId,
+            friend_id: friend.id,
+            line_user_id: userId,
+            event_type: "seminar_already_applied",
+            content: `seminar_id=${seminarId}`,
+            raw_event: JSON.parse(JSON.stringify(event)),
+          })
+        } catch (err) {
+          console.error("[seminar_apply] already_applied log failed", err)
+        }
         break
       }
 

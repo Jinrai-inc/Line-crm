@@ -130,6 +130,14 @@ export default function FriendsPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [allTags, setAllTags] = useState<Tag[]>([])
   const [unreadFriendIds, setUnreadFriendIds] = useState<Set<string>>(new Set())
+  // 未対応 = フォローアップボタンを押した or すでに申込済み自動返信を受けた友だちのうち
+  // 運営からの手動返信がまだないもの
+  const [unhandledFriendIds, setUnhandledFriendIds] = useState<string[]>([])
+  const [unhandledCount, setUnhandledCount] = useState(0)
+  const [unhandledByReason, setUnhandledByReason] = useState<{
+    followup_response: number
+    seminar_already_applied: number
+  }>({ followup_response: 0, seminar_already_applied: 0 })
 
   // Dialog state
   const [addDialogOpen, setAddDialogOpen] = useState(false)
@@ -152,7 +160,18 @@ export default function FriendsPage() {
         sortOrder: sortDir,
       })
       if (search) params.set("search", search)
-      if (statusFilter !== "all") params.set("status", statusFilter)
+      // 「未対応」タブ選択時は status フィルタを掛けず、ids フィルタで未対応の
+      // 友だちだけを取得する。unhandled 計算側で既に active 絞り込み済み。
+      if (statusFilter === "unhandled") {
+        if (unhandledFriendIds.length === 0) {
+          // 未対応ゼロ件 → 空の一覧を返す（存在しない ID でフィルタ）
+          params.set("ids", "00000000-0000-0000-0000-000000000000")
+        } else {
+          params.set("ids", unhandledFriendIds.join(","))
+        }
+      } else if (statusFilter !== "all") {
+        params.set("status", statusFilter)
+      }
       if (selectedTagIds.length > 0) params.set("tagIds", selectedTagIds.join(","))
 
       const res = await fetch(`/api/friends?${params}`)
@@ -172,7 +191,7 @@ export default function FriendsPage() {
     } finally {
       setLoading(false)
     }
-  }, [page, pageSize, search, statusFilter, selectedTagIds, sortField, sortDir])
+  }, [page, pageSize, search, statusFilter, selectedTagIds, sortField, sortDir, unhandledFriendIds])
 
   useEffect(() => {
     fetchFriends()
@@ -200,6 +219,40 @@ export default function FriendsPage() {
   useEffect(() => {
     fetchUnread()
   }, [fetchUnread])
+
+  // 未対応状態を取得
+  //
+  // 未対応 = 以下のイベントが起きたまま運営者が個別チャットで返信して
+  // いない友だち:
+  //   - followup_response: フォローアップボタン (個別相談希望など) を押した
+  //   - seminar_already_applied: 「すでにお申込み済み」自動返信を受けた
+  const fetchUnhandled = useCallback(async () => {
+    try {
+      const res = await fetch("/api/friends/unhandled")
+      if (res.ok) {
+        const json = await res.json()
+        setUnhandledFriendIds(json.unhandledFriendIds || [])
+        setUnhandledCount(json.unhandledCount || 0)
+        setUnhandledByReason(
+          json.byReason || { followup_response: 0, seminar_already_applied: 0 }
+        )
+      }
+    } catch {
+      /* ignore */
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchUnhandled()
+  }, [fetchUnhandled])
+
+  // 未対応タブ選択中は、ページの再ロード時や戻ってきたタイミングで再計算する。
+  // （友だち詳細画面で個別返信を送ると自動的に一覧から外れるようにするため）
+  useEffect(() => {
+    if (statusFilter === "unhandled") {
+      fetchUnhandled()
+    }
+  }, [statusFilter, fetchUnhandled])
 
   // ── Helpers ────────────────────────────────────────────────────────
 
@@ -499,6 +552,17 @@ export default function FriendsPage() {
             <TabsList>
               <TabsTrigger value="all">すべて</TabsTrigger>
               <TabsTrigger value="active">アクティブ</TabsTrigger>
+              <TabsTrigger value="unhandled" className="gap-1.5">
+                未対応
+                {unhandledCount > 0 && (
+                  <span
+                    className="inline-flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold min-w-[18px] h-[18px] px-1"
+                    aria-label={`${unhandledCount}件未対応`}
+                  >
+                    {unhandledCount > 99 ? "99+" : unhandledCount}
+                  </span>
+                )}
+              </TabsTrigger>
               <TabsTrigger value="blocked">ブロック</TabsTrigger>
               <TabsTrigger value="unfollowed">フォロー解除</TabsTrigger>
             </TabsList>
@@ -522,6 +586,36 @@ export default function FriendsPage() {
             </Select>
           </div>
         </div>
+
+        {/* 未対応タブ選択中のみ: 内訳を表示して対応が必要な状態が分かるようにする */}
+        {statusFilter === "unhandled" && unhandledCount > 0 && (
+          <div className="flex flex-wrap items-center gap-3 rounded-lg bg-red-50 border border-red-100 px-4 py-3 text-sm">
+            <span className="font-semibold text-red-900">
+              ⚠️ 未対応 {unhandledCount} 件
+            </span>
+            <span className="text-gray-400">/</span>
+            {unhandledByReason.followup_response > 0 && (
+              <span className="text-red-800">
+                フォローアップ応答:{" "}
+                <strong>{unhandledByReason.followup_response}</strong>
+              </span>
+            )}
+            {unhandledByReason.seminar_already_applied > 0 && (
+              <>
+                {unhandledByReason.followup_response > 0 && (
+                  <span className="text-gray-400">/</span>
+                )}
+                <span className="text-red-800">
+                  お申込み済み自動返信:{" "}
+                  <strong>{unhandledByReason.seminar_already_applied}</strong>
+                </span>
+              </>
+            )}
+            <span className="text-xs text-red-700 ml-auto">
+              個別チャットから返信すると自動的にこの一覧から外れます
+            </span>
+          </div>
+        )}
 
         {/* Tag filters */}
         {allTags.length > 0 && (

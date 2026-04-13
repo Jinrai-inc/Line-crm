@@ -21,6 +21,9 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get("search") || ""
     const status = searchParams.get("status") || ""
     const tagIds = searchParams.get("tagIds") || ""
+    // ids: カンマ区切り UUID のホワイトリスト。「未対応」タブなどで
+    // 事前に計算した friend_id のサブセットだけを取得するのに使う。
+    const idsParam = searchParams.get("ids") || ""
 
     // ソートキーのホワイトリスト検証
     // 任意のカラム名を受け入れると Supabase が存在しない列でエラーを返すため、
@@ -54,6 +57,21 @@ export async function GET(request: NextRequest) {
     // ステータスフィルタ
     if (status && status !== "all") {
       query = query.eq("status", status)
+    }
+
+    // ids フィルタ（「未対応」タブなどで事前計算済みの UUID 集合だけ返す）
+    // カンマ区切りの UUID を配列化して .in() で絞り込む。
+    // 空の場合は「該当なし」を返すために存在しない UUID で絞り込む。
+    if (idsParam) {
+      const ids = idsParam
+        .split(",")
+        .map((s) => s.trim())
+        .filter((s) => /^[0-9a-fA-F-]{36}$/.test(s))
+      if (ids.length === 0) {
+        query = query.eq("id", "00000000-0000-0000-0000-000000000000")
+      } else {
+        query = query.in("id", ids)
+      }
     }
 
     // ソート
