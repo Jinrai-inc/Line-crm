@@ -2,6 +2,7 @@ import { createAdminClient } from "@/lib/supabase/server"
 import { getProfile, replyMessage, pushMessage } from "./client"
 import { createWelcomeMessage } from "./messages"
 import { createSeminarListMessage, createApplyConfirmMessage, createFollowupResponseMessage, createSurveyRewardMessage, createSingleQuestionMessage, createPaymentMessage, createZoomLinkMessage } from "./flex-templates"
+import { notifyAdmin } from "@/lib/notifications/admin"
 
 // メッセージタグ置換（{name} → ユーザー名）
 function replaceMessageTags(text: string, displayName: string): string {
@@ -1162,6 +1163,51 @@ async function handlePostback(
         content: `seminar_id=${seminarId}&button_index=${buttonIndex}&tag=${button.tagName}`,
         raw_event: JSON.parse(JSON.stringify(event)),
       })
+
+      // 管理者向け通知（LINE / Slack へ自動送信）
+      // 環境変数 ADMIN_NOTIFICATION_LINE_USER_IDS / ADMIN_NOTIFICATION_SLACK_WEBHOOK_URL
+      // が設定されていれば、それぞれの経路に通知が飛ぶ。未設定なら何もしない。
+      // ここで失敗しても followup_response の処理本体には影響させないよう
+      // catch で握り潰す。
+      try {
+        // セミナータイトルを取得（コンテキスト情報用、失敗しても通知は行う）
+        let seminarTitle = ""
+        try {
+          const { data: seminarData } = await supabase
+            .from("seminars")
+            .select("title")
+            .eq("id", seminarId)
+            .single()
+          seminarTitle = (seminarData as { title?: string } | null)?.title || ""
+        } catch {
+          // 取得失敗時は seminarTitle 空のまま続行
+        }
+
+        const nowJp = new Date().toLocaleString("ja-JP", {
+          timeZone: "Asia/Tokyo",
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+        })
+
+        await notifyAdmin(
+          { channelAccessToken: context.channelAccessToken },
+          {
+            title: "🔔 フォローアップ応答がありました",
+            lines: [
+              `友だち: ${followupUserName}`,
+              `ボタン: ${button.label}`,
+              `タグ: ${button.tagName}`,
+              ...(seminarTitle ? [`セミナー: ${seminarTitle}`] : []),
+              `時刻: ${nowJp}`,
+            ],
+          }
+        )
+      } catch (notifyErr) {
+        console.error("[followup_response] admin notify failed", notifyErr)
+      }
       break
     }
     case "survey_answer": {
