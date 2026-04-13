@@ -59,6 +59,8 @@ import {
   ChevronRightIcon,
   XIcon,
   UsersIcon,
+  CopyIcon,
+  CheckIcon,
 } from "lucide-react"
 
 // ── Types ──────────────────────────────────────────────────────────────
@@ -109,6 +111,52 @@ const SORT_OPTIONS: ReadonlyArray<{ value: string; field: SortField; dir: SortDi
   { value: "last_message_at-asc", field: "last_message_at", dir: "asc", label: "最終やりとりが古い順" },
   { value: "display_name-asc", field: "display_name", dir: "asc", label: "名前順（あ→わ）" },
 ]
+
+// LINE User ID を表示するセルコンポーネント
+// 長い UUID (U で始まる 33 文字) をそのまま出すと場所を食うので、
+// 先頭 8 文字 + "…" + 末尾 4 文字で切り詰め。
+// クリックでクリップボードにフル値コピー → 一時的にチェックアイコンに変化。
+//
+// module-level に切り出すことで、親コンポーネント再レンダー時に
+// copied state が失われないようにしている。
+function UserIdCell({ userId }: { userId: string | null }) {
+  const [copied, setCopied] = useState(false)
+
+  if (!userId) {
+    return <span className="text-gray-300 text-xs">-</span>
+  }
+
+  const truncated =
+    userId.length > 14 ? `${userId.slice(0, 8)}…${userId.slice(-4)}` : userId
+
+  const handleCopy = async (e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    try {
+      await navigator.clipboard.writeText(userId)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch {
+      // HTTPS でない環境など、clipboard API が使えない場合は何もしない
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={handleCopy}
+      title={`クリックでコピー: ${userId}`}
+      className="inline-flex items-center gap-1 font-mono text-[11px] text-gray-500 hover:text-gray-700 hover:bg-gray-50 rounded px-1.5 py-0.5 transition-colors"
+    >
+      <span>{truncated}</span>
+      {copied ? (
+        <CheckIcon className="size-3 text-green-600" />
+      ) : (
+        <CopyIcon className="size-3 opacity-50" />
+      )}
+    </button>
+  )
+}
 
 // ── Main Page Component ────────────────────────────────────────────────
 
@@ -776,6 +824,7 @@ export default function FriendsPage() {
                   <TableHead>
                     <SortButton field="display_name">表示名</SortButton>
                   </TableHead>
+                  <TableHead>User ID</TableHead>
                   <TableHead>ステータス</TableHead>
                   <TableHead>タグ</TableHead>
                   <TableHead>
@@ -799,6 +848,7 @@ export default function FriendsPage() {
                           </div>
                         </TableCell>
                         <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+                        <TableCell><Skeleton className="h-4 w-24" /></TableCell>
                         <TableCell><Skeleton className="h-5 w-16 rounded-full" /></TableCell>
                         <TableCell><Skeleton className="h-5 w-24" /></TableCell>
                         <TableCell><Skeleton className="h-4 w-20" /></TableCell>
@@ -808,7 +858,7 @@ export default function FriendsPage() {
                     ))
                   : friends.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={8} className="h-32 text-center">
+                        <TableCell colSpan={9} className="h-32 text-center">
                           <div className="flex flex-col items-center gap-2 text-gray-400">
                             <UsersIcon className="size-8" />
                             <p>友だちが見つかりませんでした</p>
@@ -849,6 +899,9 @@ export default function FriendsPage() {
                           </TableCell>
                           <TableCell className="text-gray-600">
                             {friend.custom_name || "-"}
+                          </TableCell>
+                          <TableCell>
+                            <UserIdCell userId={friend.line_user_id} />
                           </TableCell>
                           <TableCell>
                             <Badge variant={status?.variant ?? "secondary"}>
@@ -1005,6 +1058,13 @@ export default function FriendsPage() {
                                 最終: {formatRelativeTime(friend.last_message_at)}
                               </span>
                             )}
+                          </div>
+                          {/* User ID 表示 (クリックでコピー) */}
+                          <div
+                            className="mt-2"
+                            onClick={(e) => e.preventDefault()}
+                          >
+                            <UserIdCell userId={friend.line_user_id} />
                           </div>
                         </div>
                       </div>

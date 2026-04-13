@@ -480,6 +480,25 @@ export default function FriendDetailPage() {
                     : "-"}
                 </span>
               </div>
+              <div>
+                <span className="text-sm text-muted-foreground">User ID:</span>
+                <button
+                  type="button"
+                  className="ml-2 inline-flex items-center gap-1 font-mono text-xs text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded px-1.5 py-0.5 transition-colors"
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(friend.line_user_id)
+                      // シンプルに alert で通知（v1）
+                      alert(`User ID をコピーしました\n${friend.line_user_id}`)
+                    } catch {
+                      alert("コピーに失敗しました。ブラウザがクリップボードを許可していない可能性があります。")
+                    }
+                  }}
+                  title={`クリックでコピー: ${friend.line_user_id}`}
+                >
+                  <span className="break-all">{friend.line_user_id}</span>
+                </button>
+              </div>
               {friend.memo && (
                 <div>
                   <span className="text-sm text-muted-foreground">メモ:</span>
