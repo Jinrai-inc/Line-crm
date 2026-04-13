@@ -1043,3 +1043,67 @@ export function createZoomLinkMessage(seminarTitle: string, zoomUrl: string, not
     },
   })
 }
+
+// 決済後 / 申込後 に送信する予約ページ案内（Timerex 等）
+// 有料セミナー: Stripe 決済完了後の webhook から呼ばれる
+// 無料セミナー（個別相談など）: handlePostback の seminar_apply から呼ばれる
+// どちらの経路でも同じ見た目になるよう helper に統一する。
+export function createPostPaymentMessage(
+  seminarTitle: string,
+  postPaymentUrl: string,
+  customMessage?: string | null
+) {
+  const message =
+    customMessage ||
+    "以下のURLからご予約ください。\n詳細はご登録いただくメールよりご確認ください。"
+  return flexMessage("ご案内", {
+    type: "bubble",
+    body: {
+      type: "box",
+      layout: "vertical",
+      contents: [
+        {
+          type: "text",
+          text: "📅 ご予約のご案内",
+          weight: "bold",
+          size: "lg",
+          color: "#06C755",
+        },
+        { type: "separator", margin: "lg" },
+        {
+          type: "text",
+          text: seminarTitle,
+          weight: "bold",
+          size: "md",
+          margin: "lg",
+          wrap: true,
+        },
+        {
+          type: "text",
+          text: message,
+          wrap: true,
+          margin: "md",
+          size: "sm",
+          color: "#333333",
+        },
+      ],
+    },
+    footer: {
+      type: "box",
+      layout: "vertical",
+      spacing: "sm",
+      contents: [
+        {
+          type: "button",
+          style: "primary",
+          color: "#06C755",
+          action: {
+            type: "uri",
+            label: "予約ページを開く",
+            uri: postPaymentUrl,
+          },
+        },
+      ],
+    },
+  })
+}
