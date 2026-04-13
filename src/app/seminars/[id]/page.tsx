@@ -141,6 +141,11 @@ export default function SeminarDetailPage() {
 
   const [seminar, setSeminar] = useState<Seminar | null>(null)
   const [loading, setLoading] = useState(true)
+  // 決済状況フィルタ — 参加者一覧をクリックで絞り込む
+  // "all" = すべて, "paid" = 決済完了, "unpaid" = 未決済 (pending/failed/なし), "refunded" = 返金済
+  const [paymentFilter, setPaymentFilter] = useState<
+    "all" | "paid" | "unpaid" | "refunded"
+  >("all")
   const [editOpen, setEditOpen] = useState(false)
   const [addAttendeeOpen, setAddAttendeeOpen] = useState(false)
   const [inviteOpen, setInviteOpen] = useState(false)
@@ -631,45 +636,108 @@ export default function SeminarDetailPage() {
                   </Button>
                 </div>
               </div>
-              {/* 決済状況サマリー (有料セミナーのみ) */}
+              {/* 決済状況サマリー (有料セミナーのみ)
+                  クリックで参加者一覧をその決済状態に絞り込めるフィルタボタン */}
               {seminar.price && seminar.price > 0 && seminar.attendees.length > 0 && (
                 (() => {
                   const stats = seminar.attendees.reduce(
                     (acc, a) => {
                       const s = a.payment?.status
                       if (s === "paid") acc.paid += 1
-                      else if (s === "pending") acc.pending += 1
-                      else if (s === "failed") acc.failed += 1
                       else if (s === "refunded") acc.refunded += 1
-                      else acc.noRecord += 1
+                      else acc.unpaid += 1 // pending / failed / no record 全部まとめて未決済
                       return acc
                     },
-                    { paid: 0, pending: 0, failed: 0, refunded: 0, noRecord: 0 }
+                    { paid: 0, refunded: 0, unpaid: 0 }
                   )
+                  const total = seminar.attendees.length
+
+                  const CountCard = ({
+                    label,
+                    count,
+                    filterKey,
+                    variant,
+                  }: {
+                    label: string
+                    count: number
+                    filterKey: "all" | "paid" | "unpaid" | "refunded"
+                    variant: "default" | "green" | "yellow" | "blue"
+                  }) => {
+                    const isActive = paymentFilter === filterKey
+                    const variantStyles = {
+                      default: {
+                        active: "bg-gray-800 text-white border-gray-800",
+                        inactive: "bg-white text-gray-700 border-gray-300 hover:bg-gray-50",
+                      },
+                      green: {
+                        active: "bg-green-600 text-white border-green-600",
+                        inactive: "bg-white text-green-700 border-green-300 hover:bg-green-50",
+                      },
+                      yellow: {
+                        active: "bg-yellow-500 text-white border-yellow-500",
+                        inactive: "bg-white text-yellow-800 border-yellow-300 hover:bg-yellow-50",
+                      },
+                      blue: {
+                        active: "bg-blue-600 text-white border-blue-600",
+                        inactive: "bg-white text-blue-700 border-blue-300 hover:bg-blue-50",
+                      },
+                    }
+                    const style = isActive ? variantStyles[variant].active : variantStyles[variant].inactive
+
+                    return (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setPaymentFilter(isActive ? "all" : filterKey)
+                        }
+                        className={`flex flex-col items-center justify-center rounded-lg border-2 px-4 py-3 min-w-[110px] transition-all ${style}`}
+                      >
+                        <span className="text-2xl font-bold leading-none">
+                          {count}
+                        </span>
+                        <span className="text-xs mt-1 font-medium whitespace-nowrap">
+                          {label}
+                        </span>
+                      </button>
+                    )
+                  }
+
                   return (
-                    <div className="flex flex-wrap gap-2 mt-3 text-xs">
-                      <span className="inline-flex items-center gap-1 rounded-md border border-green-300 bg-green-50 text-green-800 px-2 py-1">
-                        ✓ 決済済 <strong>{stats.paid}</strong>
-                      </span>
-                      {stats.pending > 0 && (
-                        <span className="inline-flex items-center gap-1 rounded-md border border-yellow-300 bg-yellow-50 text-yellow-900 px-2 py-1">
-                          ⏳ 未決済 <strong>{stats.pending}</strong>
-                        </span>
-                      )}
-                      {stats.noRecord > 0 && (
-                        <span className="inline-flex items-center gap-1 rounded-md border border-gray-300 bg-gray-50 text-gray-700 px-2 py-1">
-                          ⚠ 決済リンク未送信 <strong>{stats.noRecord}</strong>
-                        </span>
-                      )}
-                      {stats.failed > 0 && (
-                        <span className="inline-flex items-center gap-1 rounded-md border border-red-300 bg-red-50 text-red-800 px-2 py-1">
-                          ✕ 決済失敗 <strong>{stats.failed}</strong>
-                        </span>
-                      )}
-                      {stats.refunded > 0 && (
-                        <span className="inline-flex items-center gap-1 rounded-md border border-blue-300 bg-blue-50 text-blue-800 px-2 py-1">
-                          ↩ 返金済 <strong>{stats.refunded}</strong>
-                        </span>
+                    <div className="w-full mt-3">
+                      <div className="flex flex-wrap gap-2">
+                        <CountCard
+                          label="申込数"
+                          count={total}
+                          filterKey="all"
+                          variant="default"
+                        />
+                        <CountCard
+                          label="決済完了"
+                          count={stats.paid}
+                          filterKey="paid"
+                          variant="green"
+                        />
+                        <CountCard
+                          label="未決済"
+                          count={stats.unpaid}
+                          filterKey="unpaid"
+                          variant="yellow"
+                        />
+                        {stats.refunded > 0 && (
+                          <CountCard
+                            label="返金済"
+                            count={stats.refunded}
+                            filterKey="refunded"
+                            variant="blue"
+                          />
+                        )}
+                      </div>
+                      {paymentFilter !== "all" && (
+                        <p className="text-xs text-gray-500 mt-2">
+                          👉 下の一覧はクリックしたフィルタで絞り込み中です。
+                          もう一度同じカードをクリックすると全件表示に戻ります。
+                          参加者名をクリックするとその方の友だち詳細に遷移し、個別メッセージを送れます。
+                        </p>
                       )}
                     </div>
                   )
@@ -677,9 +745,37 @@ export default function SeminarDetailPage() {
               )}
             </CardHeader>
             <CardContent>
-              {seminar.attendees.length === 0 ? (
-                <p className="text-sm text-gray-500 text-center py-8">参加者がいません</p>
-              ) : (
+              {(() => {
+                // paymentFilter に基づいて申込者を絞り込む
+                //   "all"      → すべて
+                //   "paid"     → 決済完了 (payment.status === "paid")
+                //   "unpaid"   → 未決済 (有料セミナーで未完了 / 失敗 / レコード無し)
+                //   "refunded" → 返金済
+                const filteredAttendees = seminar.attendees.filter((a) => {
+                  if (paymentFilter === "all") return true
+                  const s = a.payment?.status
+                  if (paymentFilter === "paid") return s === "paid"
+                  if (paymentFilter === "refunded") return s === "refunded"
+                  // unpaid
+                  return s !== "paid" && s !== "refunded"
+                })
+
+                if (seminar.attendees.length === 0) {
+                  return (
+                    <p className="text-sm text-gray-500 text-center py-8">
+                      参加者がいません
+                    </p>
+                  )
+                }
+                if (filteredAttendees.length === 0) {
+                  return (
+                    <p className="text-sm text-gray-500 text-center py-8">
+                      該当する参加者がいません（フィルタ中）
+                    </p>
+                  )
+                }
+
+                return (
                 <div className="overflow-x-auto">
                   <Table>
                     <TableHeader>
@@ -692,7 +788,7 @@ export default function SeminarDetailPage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {seminar.attendees.map((attendee) => {
+                      {filteredAttendees.map((attendee) => {
                         const payment = attendee.payment
                         // payment status を UI 用の表示情報に変換
                         //   有料セミナー:
@@ -825,7 +921,8 @@ export default function SeminarDetailPage() {
                     </TableBody>
                   </Table>
                 </div>
-              )}
+                )
+              })()}
             </CardContent>
           </Card>
         </div>
