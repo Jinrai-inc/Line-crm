@@ -231,13 +231,19 @@ export async function POST(request: NextRequest) {
     console.log("[timerex-webhook] parsed", parsed)
 
     // ----- 1. 友だちを特定する -----
-    let friend: {
+    // 注意: TypeScript の制御フロー解析が `let friend = null` を null に narrow して
+    // しまうため、`typeof friend` で参照すると null として扱われてしまう。
+    // 型エイリアスを外に切り出して明示的に参照する必要がある (webhook.ts の
+    // greeting_settings で同じ罠にハマったのと同じパターン)。
+    type MatchedFriend = {
       id: string
       line_user_id: string
       organization_id: string
       display_name: string | null
       custom_name: string | null
-    } | null = null
+    }
+
+    let friend: MatchedFriend | null = null
 
     // (a) friend_id があれば直接検索（最も確実）
     if (parsed.friendId) {
@@ -246,7 +252,7 @@ export async function POST(request: NextRequest) {
         .select("id, line_user_id, organization_id, display_name, custom_name")
         .eq("id", parsed.friendId)
         .maybeSingle()
-      friend = (data as typeof friend) || null
+      friend = (data as MatchedFriend | null) || null
       if (friend) console.log("[timerex-webhook] matched by friend_id", friend.id)
     }
 
@@ -259,7 +265,7 @@ export async function POST(request: NextRequest) {
         .eq("status", "active")
         .limit(1)
       if (data && data.length > 0) {
-        friend = data[0] as typeof friend
+        friend = data[0] as MatchedFriend
         console.log("[timerex-webhook] matched by email", parsed.email)
       }
     }
@@ -275,7 +281,7 @@ export async function POST(request: NextRequest) {
         .limit(2)
       if (data && data.length === 1) {
         // 1 件だけマッチした場合のみ採用（複数マッチは曖昧なので使わない）
-        friend = data[0] as typeof friend
+        friend = data[0] as MatchedFriend
         console.log("[timerex-webhook] matched by name", parsed.name)
       } else if (data && data.length > 1) {
         console.warn("[timerex-webhook] name match ambiguous, skipping", {
