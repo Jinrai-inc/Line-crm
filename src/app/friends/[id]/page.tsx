@@ -54,6 +54,7 @@ interface FriendDetail {
     direction: string
     message_type: string
     content: string | null
+    event_type: string
     sent_at: string
   }[]
 }
@@ -62,6 +63,108 @@ interface AvailableTag {
   id: string
   name: string
   color: string
+}
+
+// メッセージ履歴のイベント種別ごとに人間が読める形式に整形する
+//
+// DB に入っている content はクエリ文字列形式 (例:
+//   "seminar_id=XXX&button_index=0&tag=個別相談希望"
+// ) で機械可読だが、管理画面上ではそのままだと意味不明なので、種別ごとに
+// パースして「何が起きたか」を日本語で表示する。
+//
+// 戻り値:
+//   - kind: "outgoing" | "incoming" | "system"
+//     ├ "outgoing": 緑バブル右寄せ (運営からの送信)
+//     ├ "incoming": グレーバブル左寄せ (お客様からの受信)
+//     └ "system":   中央配置の薄いバッジ (友だち追加/解除など)
+//   - label: バッジに表示する種別名
+//   - text:  本文として表示するテキスト
+function formatHistoryEntry(log: {
+  event_type: string
+  content: string | null
+  message_type: string
+}): { kind: "outgoing" | "incoming" | "system"; label: string; text: string } {
+  // フォローアップボタン応答（postback の一種）
+  // content 例: "seminar_id=XXX&button_index=0&tag=個別相談希望"
+  if (log.event_type === "followup_response") {
+    const params = new URLSearchParams(log.content || "")
+    const tag = params.get("tag")
+    return {
+      kind: "incoming",
+      label: "フォローアップ応答",
+      text: tag
+        ? `「${tag}」を選択しました`
+        : "フォローアップのボタンを選択しました",
+    }
+  }
+
+  // アンケート選択肢回答
+  // content 例: "survey_id=XXX&q=0&c=1&answer=男性&tag=男性"
+  if (log.event_type === "survey_answer") {
+    const params = new URLSearchParams(log.content || "")
+    const answer = params.get("answer")
+    const q = params.get("q")
+    const qLabel = q !== null && q !== "" ? `Q${parseInt(q, 10) + 1}: ` : ""
+    return {
+      kind: "incoming",
+      label: "アンケート回答",
+      text: answer
+        ? `${qLabel}「${answer}」と回答しました`
+        : "アンケートに回答しました",
+    }
+  }
+
+  // 友だち追加
+  if (log.event_type === "follow") {
+    return {
+      kind: "system",
+      label: "友だち追加",
+      text: "友だちに追加されました",
+    }
+  }
+
+  // 友だち解除 / ブロック
+  if (log.event_type === "unfollow") {
+    return {
+      kind: "system",
+      label: "ブロック",
+      text: "友だちが解除されました",
+    }
+  }
+
+  // 汎用ポストバック (個別ボタン押下など)
+  if (log.event_type === "postback") {
+    return {
+      kind: "incoming",
+      label: "ボタン操作",
+      text: log.content || "ボタンを操作しました",
+    }
+  }
+
+  // 運営側からの送信 (配信・個別メッセージ等)
+  if (log.event_type === "message_send") {
+    return {
+      kind: "outgoing",
+      label: "送信",
+      text: log.content || `[${log.message_type || "メッセージ"}]`,
+    }
+  }
+
+  // お客様からのテキスト/画像/スタンプ等の受信
+  if (log.event_type === "message") {
+    return {
+      kind: "incoming",
+      label: "メッセージ",
+      text: log.content || `[${log.message_type || "メッセージ"}]`,
+    }
+  }
+
+  // 上記以外（未知のイベント）はそのまま表示
+  return {
+    kind: "incoming",
+    label: log.event_type,
+    text: log.content || `[${log.message_type || ""}]`,
+  }
 }
 
 const statusConfig: Record<string, { label: string; className: string }> = {
@@ -507,33 +610,64 @@ export default function FriendDetailPage() {
               <p className="text-sm text-muted-foreground">メッセージ履歴はありません</p>
             ) : (
               <div className="space-y-2 max-h-80 overflow-y-auto">
-                {(friend.message_logs || []).map((log) => (
-                  <div
-                    key={log.id}
-                    className={`flex ${
-                      log.direction === "outgoing" ? "justify-end" : "justify-start"
-                    }`}
-                  >
+                {(friend.message_logs || []).map((log) => {
+                  const entry = formatHistoryEntry(log)
+
+                  // system イベント (友だち追加・解除等) は中央に薄いバッジで表示
+                  if (entry.kind === "system") {
+                    return (
+                      <div key={log.id} className="flex justify-center my-2">
+                        <div className="text-xs text-muted-foreground bg-gray-50 border border-gray-200 rounded-full px-3 py-1">
+                          <span className="font-medium">{entry.label}</span>
+                          <span className="mx-1.5 text-gray-300">·</span>
+                          <span>{entry.text}</span>
+                          <span className="mx-1.5 text-gray-300">·</span>
+                          <span>{formatRelativeTime(log.sent_at)}</span>
+                        </div>
+                      </div>
+                    )
+                  }
+
+                  // outgoing / incoming は従来通りバブル形式
+                  const isOutgoing = entry.kind === "outgoing"
+                  return (
                     <div
-                      className={`max-w-[70%] p-3 rounded-lg text-sm ${
-                        log.direction === "outgoing"
-                          ? "bg-[#06C755] text-white"
-                          : "bg-muted"
-                      }`}
+                      key={log.id}
+                      className={`flex ${isOutgoing ? "justify-end" : "justify-start"}`}
                     >
-                      <p>{log.content || `[${log.message_type}]`}</p>
-                      <p
-                        className={`text-xs mt-1 ${
-                          log.direction === "outgoing"
-                            ? "text-white/70"
-                            : "text-muted-foreground"
+                      <div
+                        className={`max-w-[70%] p-3 rounded-lg text-sm ${
+                          isOutgoing
+                            ? "bg-[#06C755] text-white"
+                            : "bg-muted"
                         }`}
                       >
-                        {formatRelativeTime(log.sent_at)}
-                      </p>
+                        {/* イベント種別バッジ (送信/受信以外のときに表示) */}
+                        {entry.label !== "送信" && entry.label !== "メッセージ" && (
+                          <div
+                            className={`inline-block text-[10px] font-semibold rounded px-1.5 py-0.5 mb-1 ${
+                              isOutgoing
+                                ? "bg-white/20 text-white"
+                                : "bg-gray-200 text-gray-600"
+                            }`}
+                          >
+                            {entry.label}
+                          </div>
+                        )}
+                        <p className="whitespace-pre-wrap">{entry.text}</p>
+                        <p
+                          className={`text-xs mt-1 ${
+                            isOutgoing
+                              ? "text-white/70"
+                              : "text-muted-foreground"
+                          }`}
+                        >
+                          {formatRelativeTime(log.sent_at)}
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             )}
           </Card>
