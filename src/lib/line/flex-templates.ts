@@ -1043,3 +1043,75 @@ export function createZoomLinkMessage(seminarTitle: string, zoomUrl: string, not
     },
   })
 }
+
+// Timerex 予約完了後の確認メッセージ
+// Timerex Webhook を /api/timerex/webhook で受け取った後、予約者の LINE に
+// 「予約を受け付けました」と通知する用の Flex Message。
+export function createTimerexBookingMessage(
+  title: string,
+  datetime?: string | null,
+  bookerName?: string | null
+) {
+  const bodyContents: unknown[] = [
+    {
+      type: "text",
+      text: "📅 ご予約を受け付けました",
+      weight: "bold",
+      size: "lg",
+      color: "#06C755",
+    },
+    { type: "separator", margin: "lg" },
+    {
+      type: "text",
+      text: title,
+      weight: "bold",
+      size: "md",
+      margin: "lg",
+      wrap: true,
+    },
+  ]
+
+  if (datetime) {
+    bodyContents.push({
+      type: "box",
+      layout: "horizontal",
+      margin: "md",
+      spacing: "sm",
+      contents: [
+        { type: "text", text: "日時", size: "sm", color: "#888888", flex: 2 },
+        { type: "text", text: datetime, size: "sm", weight: "bold", flex: 5, wrap: true },
+      ],
+    })
+  }
+
+  if (bookerName) {
+    bodyContents.push({
+      type: "box",
+      layout: "horizontal",
+      margin: "sm",
+      spacing: "sm",
+      contents: [
+        { type: "text", text: "お名前", size: "sm", color: "#888888", flex: 2 },
+        { type: "text", text: bookerName, size: "sm", flex: 5, wrap: true },
+      ],
+    })
+  }
+
+  bodyContents.push({
+    type: "text",
+    text: "ご予約ありがとうございます。\n当日お会いできるのを楽しみにしております。",
+    wrap: true,
+    margin: "lg",
+    size: "sm",
+    color: "#666666",
+  })
+
+  return flexMessage("ご予約を受け付けました", {
+    type: "bubble",
+    body: {
+      type: "box",
+      layout: "vertical",
+      contents: bodyContents,
+    },
+  })
+}
