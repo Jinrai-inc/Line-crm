@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState, useCallback } from "react"
+import Link from "next/link"
 import { useParams, useRouter } from "next/navigation"
 import { AppLayout } from "@/components/layout/app-layout"
 import { PageHeader } from "@/components/layout/page-header"
@@ -65,13 +66,25 @@ interface Friend {
   picture_url: string | null
 }
 
+// 申込者に紐付く最新の Stripe 決済情報
+interface AttendeePayment {
+  status: "pending" | "paid" | "failed" | "refunded" | string | null
+  amount: number | null
+  paid_at: string | null
+  payment_link_sent: boolean | null
+  payment_link_sent_at: string | null
+  created_at: string | null
+}
+
 interface Attendee {
   id: string
+  friend_id?: string | null
   friends: Friend | null
   status: "applied" | "confirmed" | "attended" | "cancelled"
   applied_at: string | null
   confirmed_at: string | null
   attended_at: string | null
+  payment: AttendeePayment | null
 }
 
 interface Seminar {
@@ -605,7 +618,7 @@ export default function SeminarDetailPage() {
           {/* 参加者一覧 */}
           <Card>
             <CardHeader>
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between flex-wrap gap-2">
                 <CardTitle>参加者一覧</CardTitle>
                 <div className="flex gap-2">
                   <Button size="sm" variant="outline" onClick={() => { setInviteOpen(true); setSendResult(null) }}>
@@ -618,6 +631,50 @@ export default function SeminarDetailPage() {
                   </Button>
                 </div>
               </div>
+              {/* 決済状況サマリー (有料セミナーのみ) */}
+              {seminar.price && seminar.price > 0 && seminar.attendees.length > 0 && (
+                (() => {
+                  const stats = seminar.attendees.reduce(
+                    (acc, a) => {
+                      const s = a.payment?.status
+                      if (s === "paid") acc.paid += 1
+                      else if (s === "pending") acc.pending += 1
+                      else if (s === "failed") acc.failed += 1
+                      else if (s === "refunded") acc.refunded += 1
+                      else acc.noRecord += 1
+                      return acc
+                    },
+                    { paid: 0, pending: 0, failed: 0, refunded: 0, noRecord: 0 }
+                  )
+                  return (
+                    <div className="flex flex-wrap gap-2 mt-3 text-xs">
+                      <span className="inline-flex items-center gap-1 rounded-md border border-green-300 bg-green-50 text-green-800 px-2 py-1">
+                        ✓ 決済済 <strong>{stats.paid}</strong>
+                      </span>
+                      {stats.pending > 0 && (
+                        <span className="inline-flex items-center gap-1 rounded-md border border-yellow-300 bg-yellow-50 text-yellow-900 px-2 py-1">
+                          ⏳ 未決済 <strong>{stats.pending}</strong>
+                        </span>
+                      )}
+                      {stats.noRecord > 0 && (
+                        <span className="inline-flex items-center gap-1 rounded-md border border-gray-300 bg-gray-50 text-gray-700 px-2 py-1">
+                          ⚠ 決済リンク未送信 <strong>{stats.noRecord}</strong>
+                        </span>
+                      )}
+                      {stats.failed > 0 && (
+                        <span className="inline-flex items-center gap-1 rounded-md border border-red-300 bg-red-50 text-red-800 px-2 py-1">
+                          ✕ 決済失敗 <strong>{stats.failed}</strong>
+                        </span>
+                      )}
+                      {stats.refunded > 0 && (
+                        <span className="inline-flex items-center gap-1 rounded-md border border-blue-300 bg-blue-50 text-blue-800 px-2 py-1">
+                          ↩ 返金済 <strong>{stats.refunded}</strong>
+                        </span>
+                      )}
+                    </div>
+                  )
+                })()
+              )}
             </CardHeader>
             <CardContent>
               {seminar.attendees.length === 0 ? (
@@ -629,69 +686,142 @@ export default function SeminarDetailPage() {
                       <TableRow>
                         <TableHead>名前</TableHead>
                         <TableHead>ステータス</TableHead>
+                        <TableHead>決済状況</TableHead>
                         <TableHead>申込日時</TableHead>
                         <TableHead>操作</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {seminar.attendees.map((attendee) => (
-                        <TableRow key={attendee.id}>
-                          <TableCell>
-                            <div className="flex items-center gap-2">
-                              {attendee.friends?.picture_url ? (
-                                <img
-                                  src={attendee.friends.picture_url}
-                                  alt=""
-                                  className="h-8 w-8 rounded-full"
-                                />
-                              ) : (
-                                <div className="h-8 w-8 rounded-full bg-gray-200 flex items-center justify-center">
-                                  <Users className="h-4 w-4 text-gray-400" />
-                                </div>
-                              )}
-                              <span className="text-sm font-medium">
-                                {attendee.friends?.custom_name || attendee.friends?.display_name || "名前なし"}
-                              </span>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant={attendeeStatusVariants[attendee.status]}>
-                              {attendeeStatusLabels[attendee.status]}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-sm text-gray-500">
-                            {attendee.applied_at ? formatDateTime(attendee.applied_at) : "-"}
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex items-center gap-2">
-                              <Select
-                                value={attendee.status}
-                                onValueChange={(value) =>
-                                  changeAttendeeStatus(attendee.id, value)
-                                }
-                              >
-                                <SelectTrigger className="w-32 h-8 text-xs">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="applied">申込済</SelectItem>
-                                  <SelectItem value="confirmed">確認済</SelectItem>
-                                  <SelectItem value="attended">出席</SelectItem>
-                                  <SelectItem value="cancelled">キャンセル</SelectItem>
-                                </SelectContent>
-                              </Select>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8 text-red-400 hover:text-red-600 hover:bg-red-50"
-                                onClick={() => deleteAttendee(attendee.id)}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))}
+                      {seminar.attendees.map((attendee) => {
+                        const payment = attendee.payment
+                        // payment status を UI 用の表示情報に変換
+                        //   有料セミナー:
+                        //     paid     → 緑 「決済済」
+                        //     pending  → 黄 「未決済」or 「決済リンク送信済み」
+                        //     failed   → 赤 「決済失敗」
+                        //     refunded → 青 「返金済」
+                        //     payment レコード無し → グレー 「決済リンク未送信」
+                        //   無料セミナー (seminar.price が無い/0):
+                        //     グレー 「決済不要」
+                        const isFreeSeminar = !seminar.price || seminar.price <= 0
+                        let paymentLabel: string
+                        let paymentClass: string
+                        if (isFreeSeminar) {
+                          paymentLabel = "決済不要"
+                          paymentClass = "bg-gray-100 text-gray-500 border border-gray-200"
+                        } else if (!payment) {
+                          paymentLabel = "決済リンク未送信"
+                          paymentClass = "bg-gray-100 text-gray-700 border border-gray-300"
+                        } else if (payment.status === "paid") {
+                          paymentLabel = "決済済"
+                          paymentClass = "bg-green-100 text-green-800 border border-green-300"
+                        } else if (payment.status === "refunded") {
+                          paymentLabel = "返金済"
+                          paymentClass = "bg-blue-100 text-blue-800 border border-blue-300"
+                        } else if (payment.status === "failed") {
+                          paymentLabel = "決済失敗"
+                          paymentClass = "bg-red-100 text-red-800 border border-red-300"
+                        } else {
+                          // pending
+                          paymentLabel = payment.payment_link_sent
+                            ? "決済リンク送信済み"
+                            : "未決済"
+                          paymentClass =
+                            "bg-yellow-100 text-yellow-900 border border-yellow-300"
+                        }
+
+                        return (
+                          <TableRow key={attendee.id}>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                {attendee.friends?.picture_url ? (
+                                  <img
+                                    src={attendee.friends.picture_url}
+                                    alt=""
+                                    className="h-8 w-8 rounded-full"
+                                  />
+                                ) : (
+                                  <div className="h-8 w-8 rounded-full bg-gray-200 flex items-center justify-center">
+                                    <Users className="h-4 w-4 text-gray-400" />
+                                  </div>
+                                )}
+                                {attendee.friends?.id ? (
+                                  <Link
+                                    href={`/friends/${attendee.friends.id}`}
+                                    className="text-sm font-medium hover:underline"
+                                  >
+                                    {attendee.friends.custom_name || attendee.friends.display_name || "名前なし"}
+                                  </Link>
+                                ) : (
+                                  <span className="text-sm font-medium">
+                                    {attendee.friends?.custom_name || attendee.friends?.display_name || "名前なし"}
+                                  </span>
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant={attendeeStatusVariants[attendee.status]}>
+                                {attendeeStatusLabels[attendee.status]}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex flex-col gap-0.5">
+                                <span
+                                  className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium w-fit ${paymentClass}`}
+                                  title={
+                                    payment
+                                      ? `更新: ${payment.paid_at || payment.created_at || "-"}`
+                                      : "決済記録なし"
+                                  }
+                                >
+                                  {paymentLabel}
+                                </span>
+                                {payment?.payment_link_sent_at && payment.status !== "paid" && (
+                                  <span className="text-[10px] text-gray-500">
+                                    リンク送信: {formatDateTime(payment.payment_link_sent_at)}
+                                  </span>
+                                )}
+                                {payment?.paid_at && payment.status === "paid" && (
+                                  <span className="text-[10px] text-gray-500">
+                                    完了: {formatDateTime(payment.paid_at)}
+                                  </span>
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-sm text-gray-500">
+                              {attendee.applied_at ? formatDateTime(attendee.applied_at) : "-"}
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                <Select
+                                  value={attendee.status}
+                                  onValueChange={(value) =>
+                                    changeAttendeeStatus(attendee.id, value)
+                                  }
+                                >
+                                  <SelectTrigger className="w-32 h-8 text-xs">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="applied">申込済</SelectItem>
+                                    <SelectItem value="confirmed">確認済</SelectItem>
+                                    <SelectItem value="attended">出席</SelectItem>
+                                    <SelectItem value="cancelled">キャンセル</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 text-red-400 hover:text-red-600 hover:bg-red-50"
+                                  onClick={() => deleteAttendee(attendee.id)}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        )
+                      })}
                     </TableBody>
                   </Table>
                 </div>
