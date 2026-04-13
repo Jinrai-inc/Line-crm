@@ -44,6 +44,7 @@ import {
   BarChart3,
   CalendarDays,
   User,
+  Users,
 } from "lucide-react"
 import Link from "next/link"
 
@@ -101,7 +102,7 @@ export default function SurveysPage() {
   const [sendDialogOpen, setSendDialogOpen] = useState(false)
   const [sendingSurvey, setSendingSurvey] = useState<SurveyData | null>(null)
   const [sending, setSending] = useState(false)
-  const [sendResult, setSendResult] = useState<{ sentCount: number; failedCount: number } | null>(null)
+  const [sendResult, setSendResult] = useState<{ sentCount: number; failedCount: number; targetCount?: number } | null>(null)
   const [sendTargetType, setSendTargetType] = useState("all")
   const [tags, setTags] = useState<{ id: string; name: string }[]>([])
   // 含むタグ (AND) / 除外タグ (NOT) — broadcasts と同じ仕組み
@@ -109,6 +110,9 @@ export default function SurveysPage() {
   const [excludeTagIds, setExcludeTagIds] = useState<string[]>([])
   const [seminars, setSeminars] = useState<{ id: string; title: string; status?: string }[]>([])
   const [selectedSeminarId, setSelectedSeminarId] = useState("")
+  // 配信対象人数のプレビュー
+  const [previewCount, setPreviewCount] = useState<number | null>(null)
+  const [previewing, setPreviewing] = useState(false)
 
   // Toast
   const [toast, setToast] = useState<{ type: "success" | "error"; message: string } | null>(null)
@@ -244,8 +248,55 @@ export default function SurveysPage() {
     setIncludeTagIds([])
     setExcludeTagIds([])
     setSelectedSeminarId("")
+    setPreviewCount(null)
     setSendDialogOpen(true)
   }
+
+  // 配信対象人数を取得する（broadcasts/preview を共通利用）
+  // ターゲット計算ロジックは共通 helper にあるので、broadcasts/preview を
+  // そのまま叩いて同じ数字を得られる。
+  const fetchPreviewCount = useCallback(async () => {
+    if (!sendDialogOpen || !sendingSurvey) return
+    // タグ指定で含む/除外どちらも空のときは 0 を即返す（API も同じ仕様）
+    if (sendTargetType === "tag" && includeTagIds.length === 0 && excludeTagIds.length === 0) {
+      setPreviewCount(0)
+      return
+    }
+    // セミナー指定で未選択なら null
+    if (sendTargetType === "seminar" && !selectedSeminarId) {
+      setPreviewCount(null)
+      return
+    }
+    setPreviewing(true)
+    try {
+      const body: Record<string, unknown> = { targetType: sendTargetType }
+      if (sendTargetType === "tag") {
+        body.targetFilter = { includeTagIds, excludeTagIds }
+      } else if (sendTargetType === "seminar") {
+        body.targetFilter = { seminarId: selectedSeminarId }
+      }
+      const res = await fetch("/api/broadcasts/preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      })
+      if (res.ok) {
+        const json = await res.json()
+        setPreviewCount(json.count ?? 0)
+      } else {
+        setPreviewCount(null)
+      }
+    } catch {
+      setPreviewCount(null)
+    } finally {
+      setPreviewing(false)
+    }
+  }, [sendDialogOpen, sendingSurvey, sendTargetType, includeTagIds, excludeTagIds, selectedSeminarId])
+
+  // ダイアログが開いている間、ターゲット条件が変わったら自動でプレビュー更新
+  useEffect(() => {
+    fetchPreviewCount()
+  }, [fetchPreviewCount])
 
   // include / exclude を排他的にトグル（同じタグは両方に入らない）
   function toggleIncludeTag(tagId: string) {
@@ -773,12 +824,28 @@ export default function SurveysPage() {
           </DialogHeader>
 
           {sendResult ? (
-            <div className="py-6 text-center">
-              <CheckCircle2 className="h-12 w-12 mx-auto mb-3 text-green-500" />
-              <p className="font-medium">{sendResult.sentCount}件に送信しました</p>
-              {sendResult.failedCount > 0 && (
-                <p className="text-sm text-red-500 mt-1">{sendResult.failedCount}件失敗</p>
-              )}
+            <div className="py-6 text-center space-y-3">
+              <CheckCircle2 className="h-12 w-12 mx-auto text-green-500" />
+              <div>
+                <p className="font-medium text-lg">
+                  {sendResult.sentCount}件に送信しました
+                </p>
+                {sendResult.targetCount !== undefined &&
+                  sendResult.targetCount !== sendResult.sentCount && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      対象 {sendResult.targetCount} 件中 / 送信成功 {sendResult.sentCount} 件
+                    </p>
+                  )}
+                {sendResult.failedCount > 0 && (
+                  <p className="text-sm text-red-500 mt-2">
+                    ⚠ {sendResult.failedCount}件失敗
+                  </p>
+                )}
+              </div>
+              <p className="text-xs text-gray-400 max-w-xs mx-auto leading-relaxed">
+                送信した友だちの個別メッセージ履歴に反映されています。
+                送信失敗があった場合は、対象友だちがブロック/解除済みの可能性があります。
+              </p>
             </div>
           ) : (
             <div className="space-y-4">
@@ -907,6 +974,36 @@ export default function SurveysPage() {
                   </Select>
                 </div>
               )}
+
+              {/* 配信対象人数のプレビュー */}
+              <div className="rounded-lg border-2 p-3 flex items-center justify-between gap-3"
+                style={{
+                  borderColor:
+                    previewCount !== null && previewCount > 0
+                      ? "#06C75540"
+                      : "#e5e7eb",
+                  backgroundColor:
+                    previewCount !== null && previewCount > 0
+                      ? "#06C75508"
+                      : "#f9fafb",
+                }}>
+                <div className="flex items-center gap-2">
+                  <Users className="h-4 w-4" style={{ color: accentColor }} />
+                  <span className="text-sm font-medium">配信対象人数:</span>
+                </div>
+                <div className="text-right">
+                  {previewing ? (
+                    <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
+                  ) : previewCount === null ? (
+                    <span className="text-xs text-gray-400">条件を設定してください</span>
+                  ) : (
+                    <span className="text-2xl font-bold" style={{ color: accentColor }}>
+                      {previewCount.toLocaleString()}
+                      <span className="text-xs text-gray-500 ml-1 font-normal">人</span>
+                    </span>
+                  )}
+                </div>
+              </div>
             </div>
           )}
 
@@ -922,12 +1019,14 @@ export default function SurveysPage() {
                 </Button>
                 <Button
                   onClick={handleSend}
-                  disabled={sending || (sendTargetType === "tag" && includeTagIds.length === 0 && excludeTagIds.length === 0) || (sendTargetType === "seminar" && !selectedSeminarId)}
+                  disabled={sending || previewCount === 0 || previewCount === null || (sendTargetType === "tag" && includeTagIds.length === 0 && excludeTagIds.length === 0) || (sendTargetType === "seminar" && !selectedSeminarId)}
                   style={{ backgroundColor: accentColor }}
                   className="text-white hover:opacity-90"
                 >
                   {sending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Send className="h-4 w-4 mr-2" />}
-                  送信する
+                  {previewCount !== null && previewCount > 0
+                    ? `${previewCount}人に送信する`
+                    : "送信する"}
                 </Button>
               </>
             )}

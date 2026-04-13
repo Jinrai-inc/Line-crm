@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getAuthenticatedOrgId } from "@/lib/api/auth"
 import { createAdminClient } from "@/lib/supabase/server"
-import { pushMessageBatch } from "@/lib/line/client"
+import { pushMessage } from "@/lib/line/client"
 import { createSingleQuestionMessage } from "@/lib/line/flex-templates"
 import { fetchTargetFriendsForBroadcast } from "@/lib/broadcasts/targeting"
 
@@ -103,7 +103,7 @@ export async function POST(
     )
 
     if (targetFriends.length === 0) {
-      return NextResponse.json({ sentCount: 0, failedCount: 0 })
+      return NextResponse.json({ sentCount: 0, failedCount: 0, targetCount: 0 })
     }
 
     // 最初の1問目だけ送信（段階的送信）
@@ -120,15 +120,63 @@ export async function POST(
       totalQuestions: questions.length,
     })
 
-    const userIds = targetFriends.map((f) => f.line_user_id)
+    // 個別 push でユーザー単位の成功/失敗を追跡する。
+    // pushMessageBatch だと sentCount/failedCount しか返らず、誰に届いたかが
+    // 残らないため、配信側と同じく Promise.allSettled で per-user 追跡し、
+    // 成功した友だち分だけ message_logs に bulk insert する。
+    let sentCount = 0
+    let failedCount = 0
+    const successfulFriends: Array<{ id: string; line_user_id: string }> = []
+    const concurrency = 15
+    for (let i = 0; i < targetFriends.length; i += concurrency) {
+      const batch = targetFriends.slice(i, i + concurrency)
+      const results = await Promise.allSettled(
+        batch.map((f) =>
+          pushMessage(f.line_user_id, [firstMessage], {
+            accessToken: lineAccount.channel_access_token,
+          })
+        )
+      )
+      results.forEach((r, idx) => {
+        if (r.status === "fulfilled") {
+          sentCount += 1
+          successfulFriends.push({
+            id: batch[idx].id,
+            line_user_id: batch[idx].line_user_id,
+          })
+        } else {
+          failedCount += 1
+          console.error(
+            `Survey send push failed for ${batch[idx].line_user_id}:`,
+            r.reason
+          )
+        }
+      })
+    }
 
-    // 並列バッチ送信（10件同時、リトライ付き）
-    const { sentCount, failedCount } = await pushMessageBatch(
-      userIds,
-      [firstMessage],
-      { accessToken: lineAccount.channel_access_token },
-      10
-    )
+    // 成功したユーザー分だけ message_logs に「アンケート送信」として記録
+    // event_type="message_send" は友だち詳細画面で outgoing として描画される。
+    // raw_event.survey_id を埋めておくことで、後からアンケート別の到達状況を
+    // 集計可能（broadcast_id と同じ思想）。
+    if (successfulFriends.length > 0) {
+      const logRows = successfulFriends.map((f) => ({
+        organization_id: orgId,
+        friend_id: f.id,
+        line_user_id: f.line_user_id,
+        event_type: "message_send",
+        message_type: "flex",
+        content: `[アンケート] ${survey.title}`,
+        raw_event: { survey_id: id },
+      }))
+      // 500件ずつ bulk insert
+      for (let i = 0; i < logRows.length; i += 500) {
+        const logBatch = logRows.slice(i, i + 500)
+        const { error: logErr } = await admin.from("message_logs").insert(logBatch)
+        if (logErr) {
+          console.error("Survey send: message_logs insert failed", logErr)
+        }
+      }
+    }
 
     // ステータスを published に更新
     await (admin
@@ -136,7 +184,11 @@ export async function POST(
       .update({ status: "published", updated_at: new Date().toISOString() } as never)
       .eq("id" as never, id) as unknown as Promise<{ error: unknown }>)
 
-    return NextResponse.json({ sentCount, failedCount })
+    return NextResponse.json({
+      sentCount,
+      failedCount,
+      targetCount: targetFriends.length,
+    })
   } catch (error) {
     console.error("Survey send error:", error)
     return NextResponse.json({ error: "アンケートの送信に失敗しました" }, { status: 500 })
