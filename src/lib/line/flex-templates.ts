@@ -1050,7 +1050,13 @@ export function createZoomLinkMessage(seminarTitle: string, zoomUrl: string, not
 export function createTimerexBookingMessage(
   title: string,
   datetime?: string | null,
-  bookerName?: string | null
+  bookerName?: string | null,
+  options?: {
+    endDatetime?: string | null
+    location?: string | null
+    hostName?: string | null
+    cancelUrl?: string | null
+  }
 ) {
   const bodyContents: unknown[] = [
     {
@@ -1071,32 +1077,36 @@ export function createTimerexBookingMessage(
     },
   ]
 
+  // 詳細情報セクション（key-value 形式で表示）
+  const details: Array<{ label: string; value: string }> = []
   if (datetime) {
+    const range = options?.endDatetime ? `${datetime}\n　〜 ${options.endDatetime}` : datetime
+    details.push({ label: "日時", value: range })
+  }
+  if (bookerName) {
+    details.push({ label: "お名前", value: bookerName })
+  }
+  if (options?.location) {
+    details.push({ label: "場所", value: options.location })
+  }
+  if (options?.hostName) {
+    details.push({ label: "担当", value: options.hostName })
+  }
+
+  for (const item of details) {
     bodyContents.push({
       type: "box",
       layout: "horizontal",
       margin: "md",
       spacing: "sm",
       contents: [
-        { type: "text", text: "日時", size: "sm", color: "#888888", flex: 2 },
-        { type: "text", text: datetime, size: "sm", weight: "bold", flex: 5, wrap: true },
+        { type: "text", text: item.label, size: "sm", color: "#888888", flex: 2 },
+        { type: "text", text: item.value, size: "sm", weight: "bold", flex: 5, wrap: true },
       ],
     })
   }
 
-  if (bookerName) {
-    bodyContents.push({
-      type: "box",
-      layout: "horizontal",
-      margin: "sm",
-      spacing: "sm",
-      contents: [
-        { type: "text", text: "お名前", size: "sm", color: "#888888", flex: 2 },
-        { type: "text", text: bookerName, size: "sm", flex: 5, wrap: true },
-      ],
-    })
-  }
-
+  bodyContents.push({ type: "separator", margin: "lg" })
   bodyContents.push({
     type: "text",
     text: "ご予約ありがとうございます。\n当日お会いできるのを楽しみにしております。",
@@ -1106,12 +1116,33 @@ export function createTimerexBookingMessage(
     color: "#666666",
   })
 
-  return flexMessage("ご予約を受け付けました", {
+  // フッターに任意のキャンセル URL を入れる（ある場合のみ）
+  const flexBubble: Record<string, unknown> = {
     type: "bubble",
     body: {
       type: "box",
       layout: "vertical",
       contents: bodyContents,
     },
-  })
+  }
+  if (options?.cancelUrl) {
+    flexBubble.footer = {
+      type: "box",
+      layout: "vertical",
+      spacing: "sm",
+      contents: [
+        {
+          type: "button",
+          style: "secondary",
+          action: {
+            type: "uri",
+            label: "予約内容を確認・変更",
+            uri: options.cancelUrl,
+          },
+        },
+      ],
+    }
+  }
+
+  return flexMessage("ご予約を受け付けました", flexBubble)
 }

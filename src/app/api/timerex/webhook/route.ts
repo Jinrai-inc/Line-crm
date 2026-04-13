@@ -36,6 +36,10 @@ interface ParsedBooking {
   name: string | null
   bookingTitle: string | null
   bookingDateTime: string | null
+  bookingEndDateTime: string | null
+  location: string | null
+  hostName: string | null
+  cancelUrl: string | null
 }
 
 // payload からネストされたフィールドを安全に取り出す
@@ -122,6 +126,45 @@ function parseTimerexPayload(payload: unknown, queryParams: URLSearchParams): Pa
       "schedule.start_at",
       "data.start_at",
       "data.start_time",
+    ]),
+    bookingEndDateTime: extractField(payload, [
+      "end_at",
+      "end_time",
+      "end",
+      "event.end_at",
+      "event.end_time",
+      "schedule.end_at",
+      "data.end_at",
+      "data.end_time",
+    ]),
+    location: extractField(payload, [
+      "location",
+      "place",
+      "venue",
+      "event.location",
+      "schedule.location",
+      "meeting_url",
+      "meeting_link",
+      "data.location",
+      "data.meeting_url",
+    ]),
+    hostName: extractField(payload, [
+      "host.name",
+      "host_name",
+      "organizer.name",
+      "organizer_name",
+      "owner.name",
+      "user.name",
+      "data.host.name",
+      "data.organizer.name",
+    ]),
+    cancelUrl: extractField(payload, [
+      "cancel_url",
+      "reschedule_url",
+      "manage_url",
+      "event.cancel_url",
+      "data.cancel_url",
+      "data.manage_url",
     ]),
   }
 }
@@ -248,13 +291,31 @@ export async function POST(request: NextRequest) {
     // ----- 3. LINE 通知を送信 -----
     const title = parsed.bookingTitle || "ご予約"
     const formattedDateTime = formatJpDateTime(parsed.bookingDateTime)
+    const formattedEndDateTime = formatJpDateTime(parsed.bookingEndDateTime)
+    // 終了時刻は開始時刻と同じ日付なら "14:40" のような時刻だけ表示する
+    let endDisplay: string | null = null
+    if (formattedEndDateTime && formattedDateTime) {
+      // 同日なら時刻部分だけ取り出す
+      const sameDay =
+        parsed.bookingDateTime &&
+        parsed.bookingEndDateTime &&
+        parsed.bookingDateTime.slice(0, 10) === parsed.bookingEndDateTime.slice(0, 10)
+      endDisplay = sameDay ? formattedEndDateTime.split(" ").pop() || formattedEndDateTime : formattedEndDateTime
+    }
     const bookerName = parsed.name || friend.custom_name || friend.display_name || null
 
     let sent = false
     try {
       await pushMessage(
         friend.line_user_id,
-        [createTimerexBookingMessage(title, formattedDateTime, bookerName)],
+        [
+          createTimerexBookingMessage(title, formattedDateTime, bookerName, {
+            endDatetime: endDisplay,
+            location: parsed.location,
+            hostName: parsed.hostName,
+            cancelUrl: parsed.cancelUrl,
+          }),
+        ],
         { accessToken: channelAccessToken }
       )
       sent = true
