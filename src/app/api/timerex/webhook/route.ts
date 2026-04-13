@@ -199,6 +199,29 @@ export async function POST(request: NextRequest) {
       body,
     })
 
+    const admin = createAdminClient()
+
+    // 受信した生 payload は必ず DB に保存する（友だちマッチングの成否に関わらず）。
+    // 開発者がデバッグページ /api/timerex/debug から確認できるようにするため。
+    // event_type="timerex_webhook_received" で識別。
+    try {
+      await admin.from("message_logs").insert({
+        organization_id: null,
+        friend_id: null,
+        line_user_id: null,
+        event_type: "timerex_webhook_received",
+        message_type: "debug",
+        content: "Timerex webhook payload (debug)",
+        raw_event: {
+          query: Object.fromEntries(url.searchParams.entries()),
+          headers: Object.fromEntries(request.headers.entries()),
+          body,
+        },
+      })
+    } catch (logErr) {
+      console.error("[timerex-webhook] debug log insert failed", logErr)
+    }
+
     if (!body) {
       // body が無くても 200 を返す（test ping 等のため）
       return NextResponse.json({ received: true, reason: "empty body" })
@@ -206,8 +229,6 @@ export async function POST(request: NextRequest) {
 
     const parsed = parseTimerexPayload(body, url.searchParams)
     console.log("[timerex-webhook] parsed", parsed)
-
-    const admin = createAdminClient()
 
     // ----- 1. 友だちを特定する -----
     let friend: {
