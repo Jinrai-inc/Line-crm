@@ -1011,7 +1011,7 @@ export default function SeminarDetailPage() {
               </div>
 
               <div>
-                <Label htmlFor="edit-post-payment-url">予約ページURL（Timerex 等）</Label>
+                <Label htmlFor="edit-post-payment-url">決済後に送るURL（予約ページ等）</Label>
                 <Input
                   id="edit-post-payment-url"
                   value={editForm.post_payment_url}
@@ -1019,11 +1019,7 @@ export default function SeminarDetailPage() {
                   placeholder="https://timerex.net/... など"
                 />
                 <p className="text-xs text-gray-400 mt-1">
-                  このURLはLINEで自動送信されます。
-                  <br />
-                  ・有料セミナー → 決済完了後に送信
-                  <br />
-                  ・無料セミナー（個別相談など）→ 申込時点で即送信
+                  決済完了後にこのURLがLINEで送信されます。Zoomリンクとは別に送れます。
                 </p>
               </div>
 

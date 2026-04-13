@@ -1,7 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/server"
 import { getProfile, replyMessage, pushMessage } from "./client"
 import { createWelcomeMessage } from "./messages"
-import { createSeminarListMessage, createApplyConfirmMessage, createFollowupResponseMessage, createSurveyRewardMessage, createSingleQuestionMessage, createPaymentMessage, createZoomLinkMessage, createPostPaymentMessage } from "./flex-templates"
+import { createSeminarListMessage, createApplyConfirmMessage, createFollowupResponseMessage, createSurveyRewardMessage, createSingleQuestionMessage, createPaymentMessage, createZoomLinkMessage } from "./flex-templates"
 
 // メッセージタグ置換（{name} → ユーザー名）
 function replaceMessageTags(text: string, displayName: string): string {
@@ -1006,38 +1006,6 @@ async function handlePostback(
             { accessToken: context.channelAccessToken }
           )
         } catch { /* ignore */ }
-      } else {
-        // 無料セミナーで Zoom もない場合、予約ページURL（post_payment_url）が
-        // 設定されていればそれを送信する。
-        //
-        // 本来 post_payment_url は「決済後」の URL だが、個別相談のように
-        // 決済を経由せず Timerex 等で予約するだけのケースでは Stripe
-        // webhook が発火しないため、この URL は永遠に送信されない
-        // （「スタッフから連絡します」のテキストに落ちてしまう）。
-        // そこで、決済ステップも Zoom も無い seminar で post_payment_url
-        // が設定されている場合は、申込時点で直接この URL を送る。
-        const postPaymentUrl = seminarExtra.post_payment_url as string | null
-        const postPaymentMessage = seminarExtra.post_payment_message as string | null
-        if (postPaymentUrl) {
-          try {
-            await pushMessage(
-              userId,
-              [
-                createPostPaymentMessage(
-                  seminar.title,
-                  postPaymentUrl,
-                  postPaymentMessage
-                ),
-              ],
-              { accessToken: context.channelAccessToken }
-            )
-          } catch (err) {
-            console.error(
-              "Seminar apply: post_payment_url push failed",
-              err
-            )
-          }
-        }
       }
       break
     }

@@ -2,10 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { createAdminClient } from "@/lib/supabase/server"
 import { createStripeClient } from "@/lib/stripe/client"
 import { pushMessage } from "@/lib/line/client"
-import {
-  createZoomLinkMessage,
-  createPostPaymentMessage,
-} from "@/lib/line/flex-templates"
+import { createZoomLinkMessage } from "@/lib/line/flex-templates"
 import type Stripe from "stripe"
 
 // Stripe Webhookハンドラ
@@ -133,15 +130,54 @@ export async function POST(request: NextRequest) {
                 // セミナー固有の決済後URL（TimeRex等）
                 if (seminar?.post_payment_url) {
                   seminarHandled = true
+                  const postPaymentMsg = seminar.post_payment_message || "以下のURLからご予約ください。\n詳細はご登録いただくメールよりご確認ください。"
                   await pushMessage(
                     lineUserId,
-                    [
-                      createPostPaymentMessage(
-                        seminar.title,
-                        seminar.post_payment_url,
-                        seminar.post_payment_message
-                      ),
-                    ],
+                    [{
+                      type: "flex",
+                      altText: "ご案内",
+                      contents: {
+                        type: "bubble",
+                        body: {
+                          type: "box",
+                          layout: "vertical",
+                          contents: [
+                            {
+                              type: "text",
+                              text: seminar.title,
+                              weight: "bold",
+                              size: "md",
+                              wrap: true,
+                            },
+                            {
+                              type: "text",
+                              text: postPaymentMsg,
+                              wrap: true,
+                              margin: "md",
+                              size: "sm",
+                              color: "#333333",
+                            },
+                          ],
+                        },
+                        footer: {
+                          type: "box",
+                          layout: "vertical",
+                          spacing: "sm",
+                          contents: [
+                            {
+                              type: "button",
+                              style: "primary",
+                              color: "#06C755",
+                              action: {
+                                type: "uri",
+                                label: "予約ページを開く",
+                                uri: seminar.post_payment_url,
+                              },
+                            },
+                          ],
+                        },
+                      },
+                    }],
                     { accessToken }
                   )
                 }
