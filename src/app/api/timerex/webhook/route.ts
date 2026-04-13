@@ -204,6 +204,10 @@ export async function POST(request: NextRequest) {
     // 受信した生 payload は必ず DB に保存する（友だちマッチングの成否に関わらず）。
     // 開発者がデバッグページ /api/timerex/debug から確認できるようにするため。
     // event_type="timerex_webhook_received" で識別。
+    //
+    // raw_event は Supabase の JSONB 型 = strict な Json 型なので、構造化した
+    // オブジェクトをそのまま渡すと型エラーになる。JSON.parse(JSON.stringify())
+    // で plain JSON に変換してから渡す（webhook.ts でも同じパターンを使用）。
     try {
       await admin.from("message_logs").insert({
         organization_id: null,
@@ -212,11 +216,13 @@ export async function POST(request: NextRequest) {
         event_type: "timerex_webhook_received",
         message_type: "debug",
         content: "Timerex webhook payload (debug)",
-        raw_event: {
-          query: Object.fromEntries(url.searchParams.entries()),
-          headers: Object.fromEntries(request.headers.entries()),
-          body,
-        },
+        raw_event: JSON.parse(
+          JSON.stringify({
+            query: Object.fromEntries(url.searchParams.entries()),
+            headers: Object.fromEntries(request.headers.entries()),
+            body,
+          })
+        ),
       })
     } catch (logErr) {
       console.error("[timerex-webhook] debug log insert failed", logErr)
@@ -352,6 +358,8 @@ export async function POST(request: NextRequest) {
     }
 
     // ----- 4. message_logs に記録（友だち履歴に反映）-----
+    // raw_event は Supabase の JSONB 型 (= Json 型) なので JSON.parse(JSON.stringify())
+    // で plain JSON 互換の形に変換してから渡す。
     try {
       const { error: logErr } = await admin.from("message_logs").insert({
         organization_id: friend.organization_id,
@@ -360,7 +368,9 @@ export async function POST(request: NextRequest) {
         event_type: "message_send",
         message_type: "flex",
         content: `[Timerex 予約] ${title}${formattedDateTime ? ` / ${formattedDateTime}` : ""}`,
-        raw_event: { source: "timerex", parsed, payload: body },
+        raw_event: JSON.parse(
+          JSON.stringify({ source: "timerex", parsed, payload: body })
+        ),
       })
       if (logErr) {
         console.error("[timerex-webhook] message_logs insert failed", logErr)
