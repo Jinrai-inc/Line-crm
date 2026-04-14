@@ -26,10 +26,33 @@ export async function GET(request: NextRequest) {
       .eq("organization_id", orgId)
 
     // 検索フィルタ
-    if (search) {
-      query = query.or(
-        `display_name.ilike.%${search}%,custom_name.ilike.%${search}%,email.ilike.%${search}%,phone.ilike.%${search}%,memo.ilike.%${search}%`
-      )
+    // - 半角/全角スペースでトークン分割して複数語検索に対応
+    //   （例: 「田中 太郎」→ display_name に「田中」と「太郎」の両方が含まれる友だち）
+    // - PostgREST の or() クエリを破壊しうる特殊文字 (, ( ) % _ \ :) は除去
+    // - 各トークンにつき複数カラムの OR、トークン間は AND
+    if (search && search.trim()) {
+      const tokens = search
+        .trim()
+        .split(/[\s\u3000]+/)
+        .map((t) =>
+          t.replace(/[\\%_,()*:"']/g, "").trim()
+        )
+        .filter((t) => t.length > 0)
+
+      const searchableColumns = [
+        "display_name",
+        "custom_name",
+        "email",
+        "phone",
+        "memo",
+      ]
+
+      for (const token of tokens) {
+        const orClause = searchableColumns
+          .map((col) => `${col}.ilike.%${token}%`)
+          .join(",")
+        query = query.or(orClause)
+      }
     }
 
     // ステータスフィルタ
