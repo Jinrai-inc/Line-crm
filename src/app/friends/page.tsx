@@ -59,6 +59,10 @@ import {
   ChevronRightIcon,
   XIcon,
   UsersIcon,
+  RefreshCwIcon,
+  CheckCircleIcon,
+  AlertCircleIcon,
+  Loader2Icon,
 } from "lucide-react"
 
 // ── Types ──────────────────────────────────────────────────────────────
@@ -129,6 +133,14 @@ export default function FriendsPage() {
   const [bulkTagDialogOpen, setBulkTagDialogOpen] = useState(false)
   const [bulkTagIds, setBulkTagIds] = useState<string[]>([])
   const [bulkTagSaving, setBulkTagSaving] = useState(false)
+
+  // LINE friend sync state
+  const [syncing, setSyncing] = useState(false)
+  const [syncResult, setSyncResult] = useState<
+    | { type: "success"; message: string }
+    | { type: "error"; message: string }
+    | null
+  >(null)
 
   // ── Fetch friends ──────────────────────────────────────────────────
 
@@ -230,6 +242,75 @@ export default function FriendsPage() {
   const handleSearch = (value: string) => {
     setSearch(value)
     setPage(1)
+  }
+
+  // LINE 友だち一括同期（フォロワー一覧 API でフル取得）
+  const handleSyncFriends = async () => {
+    if (syncing) return
+    setSyncing(true)
+    setSyncResult(null)
+    try {
+      // 組織の有効な LINE アカウント一覧を取得
+      const accountsRes = await fetch("/api/settings/line")
+      if (!accountsRes.ok) {
+        setSyncResult({ type: "error", message: "LINE設定の取得に失敗しました" })
+        return
+      }
+      const accountsJson = await accountsRes.json()
+      const accounts: Array<{ id: string; channel_name: string; webhook_active?: boolean }> =
+        accountsJson.lineAccounts || []
+      const activeAccounts = accounts.filter((a) => a.webhook_active !== false)
+
+      if (activeAccounts.length === 0) {
+        setSyncResult({
+          type: "error",
+          message:
+            "有効なLINEアカウントがありません。設定 → LINE連携 から連携してください。",
+        })
+        return
+      }
+
+      // 各アカウントを順次同期
+      let totalImported = 0
+      const messages: string[] = []
+      let anyFailed = false
+
+      for (const account of activeAccounts) {
+        const res = await fetch("/api/settings/line/sync", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ lineAccountId: account.id }),
+        })
+        const data = await res.json()
+        if (res.ok && data.success) {
+          totalImported += data.imported || 0
+          messages.push(
+            `[${account.channel_name}] ${data.imported}人追加 / ${data.skipped}人スキップ`
+          )
+        } else {
+          anyFailed = true
+          messages.push(`[${account.channel_name}] ${data.error || "同期に失敗しました"}`)
+        }
+      }
+
+      if (anyFailed && totalImported === 0) {
+        setSyncResult({ type: "error", message: messages.join("\n") })
+      } else {
+        setSyncResult({
+          type: "success",
+          message:
+            totalImported > 0
+              ? `${totalImported}人の友だちを新規インポートしました\n${messages.join("\n")}`
+              : `新しい友だちはいませんでした\n${messages.join("\n")}`,
+        })
+        // リストを再取得して反映
+        await fetchFriends()
+      }
+    } catch {
+      setSyncResult({ type: "error", message: "同期処理中にエラーが発生しました" })
+    } finally {
+      setSyncing(false)
+    }
   }
 
   const handleStatusChange = (value: string) => {
@@ -346,6 +427,20 @@ export default function FriendsPage() {
         description="LINE友だちの管理・検索"
         action={
           <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleSyncFriends}
+              disabled={syncing}
+              title="LINE側に登録されているフォロワー全員をCRMに取り込みます"
+            >
+              {syncing ? (
+                <Loader2Icon className="animate-spin" />
+              ) : (
+                <RefreshCwIcon />
+              )}
+              {syncing ? "同期中..." : "友だち同期"}
+            </Button>
             <Button variant="outline" size="sm" onClick={handleExportCsv}>
               <DownloadIcon />
               CSVエクスポート
@@ -401,6 +496,30 @@ export default function FriendsPage() {
           </div>
         }
       />
+
+      {/* ── 友だち同期 結果バナー ─────────────────────────────── */}
+      {syncResult && (
+        <div
+          className={`mb-4 flex items-start gap-2 rounded-lg border p-3 text-sm ${
+            syncResult.type === "success"
+              ? "border-green-200 bg-green-50 text-green-800"
+              : "border-red-200 bg-red-50 text-red-800"
+          }`}
+        >
+          {syncResult.type === "success" ? (
+            <CheckCircleIcon className="mt-0.5 size-4 shrink-0" />
+          ) : (
+            <AlertCircleIcon className="mt-0.5 size-4 shrink-0" />
+          )}
+          <div className="flex-1 whitespace-pre-wrap">{syncResult.message}</div>
+          <button
+            onClick={() => setSyncResult(null)}
+            className="text-xs underline opacity-70 hover:opacity-100"
+          >
+            閉じる
+          </button>
+        </div>
+      )}
 
       {/* ── Filters ─────────────────────────────────────────────── */}
       <div className="space-y-4 mb-6">
