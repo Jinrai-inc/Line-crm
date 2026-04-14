@@ -98,6 +98,12 @@ interface Seminar {
   zoom_note?: string | null
 }
 
+// 決済状況サマリー/決済状況列の表示フラグ
+// payments テーブルの状態が実運用と合わないケースがあり、一旦非表示にしている。
+// 復活させたい場合は true に変更するだけで、サマリーカード(申込数/決済完了/未決済)と
+// 参加者一覧の「決済状況」列の両方が再表示される。
+const SHOW_PAYMENT_STATUS = false
+
 const statusLabels: Record<string, string> = {
   open: "受付中",
   closed: "締切",
@@ -631,8 +637,9 @@ export default function SeminarDetailPage() {
               </div>
             </CardHeader>
             <CardContent>
-              {/* 決済状況サマリー（申込数/決済完了/未決済） */}
-              {seminar.attendees.length > 0 && (
+              {/* 決済状況サマリー（申込数/決済完了/未決済）
+                  SHOW_PAYMENT_STATUS フラグで一括制御（ファイル上部定義） */}
+              {SHOW_PAYMENT_STATUS && seminar.attendees.length > 0 && (
                 <div className="grid grid-cols-3 gap-3 mb-6">
                   <div className="rounded-xl border bg-gray-900 text-white p-4 text-center">
                     <div className="text-2xl font-bold">{paymentStats.total}</div>
@@ -658,7 +665,7 @@ export default function SeminarDetailPage() {
                       <TableRow>
                         <TableHead>名前</TableHead>
                         <TableHead>ステータス</TableHead>
-                        <TableHead>決済状況</TableHead>
+                        {SHOW_PAYMENT_STATUS && <TableHead>決済状況</TableHead>}
                         <TableHead>申込日時</TableHead>
                         <TableHead>操作</TableHead>
                       </TableRow>
@@ -689,25 +696,27 @@ export default function SeminarDetailPage() {
                               {attendeeStatusLabels[attendee.status]}
                             </Badge>
                           </TableCell>
-                          <TableCell>
-                            {attendee.payment_status === "paid" ? (
-                              <span className="inline-flex items-center rounded-full bg-emerald-100 text-emerald-700 px-2 py-0.5 text-xs font-medium">
-                                決済完了
-                              </span>
-                            ) : attendee.payment_status === "refunded" ? (
-                              <span className="inline-flex items-center rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-xs font-medium">
-                                返金済
-                              </span>
-                            ) : attendee.payment_status === "failed" ? (
-                              <span className="inline-flex items-center rounded-full bg-red-100 text-red-700 px-2 py-0.5 text-xs font-medium">
-                                決済失敗
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center rounded-full bg-amber-100 text-amber-700 px-2 py-0.5 text-xs font-medium">
-                                未決済
-                              </span>
-                            )}
-                          </TableCell>
+                          {SHOW_PAYMENT_STATUS && (
+                            <TableCell>
+                              {attendee.payment_status === "paid" ? (
+                                <span className="inline-flex items-center rounded-full bg-emerald-100 text-emerald-700 px-2 py-0.5 text-xs font-medium">
+                                  決済完了
+                                </span>
+                              ) : attendee.payment_status === "refunded" ? (
+                                <span className="inline-flex items-center rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-xs font-medium">
+                                  返金済
+                                </span>
+                              ) : attendee.payment_status === "failed" ? (
+                                <span className="inline-flex items-center rounded-full bg-red-100 text-red-700 px-2 py-0.5 text-xs font-medium">
+                                  決済失敗
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center rounded-full bg-amber-100 text-amber-700 px-2 py-0.5 text-xs font-medium">
+                                  未決済
+                                </span>
+                              )}
+                            </TableCell>
+                          )}
                           <TableCell className="text-sm text-gray-500">
                             {attendee.applied_at ? formatDateTime(attendee.applied_at) : "-"}
                           </TableCell>
