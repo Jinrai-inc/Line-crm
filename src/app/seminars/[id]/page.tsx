@@ -72,6 +72,9 @@ interface Attendee {
   applied_at: string | null
   confirmed_at: string | null
   attended_at: string | null
+  payment_status: "pending" | "paid" | "refunded" | "failed" | null
+  payment_amount: number | null
+  paid_at: string | null
 }
 
 interface Seminar {
@@ -484,6 +487,14 @@ export default function SeminarDetailPage() {
       }
     : { applied: 0, confirmed: 0, attended: 0, cancelled: 0 }
 
+  // 決済統計（キャンセル済みを除く有効な申込のみカウント）
+  const activeAttendees = seminar?.attendees.filter((a) => a.status !== "cancelled") ?? []
+  const paymentStats = {
+    total: activeAttendees.length,
+    paid: activeAttendees.filter((a) => a.payment_status === "paid").length,
+    unpaid: activeAttendees.filter((a) => a.payment_status !== "paid").length,
+  }
+
   if (loading) {
     return (
       <AppLayout>
@@ -620,6 +631,24 @@ export default function SeminarDetailPage() {
               </div>
             </CardHeader>
             <CardContent>
+              {/* 決済状況サマリー（申込数/決済完了/未決済） */}
+              {seminar.attendees.length > 0 && (
+                <div className="grid grid-cols-3 gap-3 mb-6">
+                  <div className="rounded-xl border bg-gray-900 text-white p-4 text-center">
+                    <div className="text-2xl font-bold">{paymentStats.total}</div>
+                    <div className="text-xs mt-1 opacity-80">申込数</div>
+                  </div>
+                  <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-center">
+                    <div className="text-2xl font-bold text-emerald-700">{paymentStats.paid}</div>
+                    <div className="text-xs mt-1 text-emerald-700">決済完了</div>
+                  </div>
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-center">
+                    <div className="text-2xl font-bold text-amber-700">{paymentStats.unpaid}</div>
+                    <div className="text-xs mt-1 text-amber-700">未決済</div>
+                  </div>
+                </div>
+              )}
+
               {seminar.attendees.length === 0 ? (
                 <p className="text-sm text-gray-500 text-center py-8">参加者がいません</p>
               ) : (
@@ -629,6 +658,7 @@ export default function SeminarDetailPage() {
                       <TableRow>
                         <TableHead>名前</TableHead>
                         <TableHead>ステータス</TableHead>
+                        <TableHead>決済状況</TableHead>
                         <TableHead>申込日時</TableHead>
                         <TableHead>操作</TableHead>
                       </TableRow>
@@ -658,6 +688,25 @@ export default function SeminarDetailPage() {
                             <Badge variant={attendeeStatusVariants[attendee.status]}>
                               {attendeeStatusLabels[attendee.status]}
                             </Badge>
+                          </TableCell>
+                          <TableCell>
+                            {attendee.payment_status === "paid" ? (
+                              <span className="inline-flex items-center rounded-full bg-emerald-100 text-emerald-700 px-2 py-0.5 text-xs font-medium">
+                                決済完了
+                              </span>
+                            ) : attendee.payment_status === "refunded" ? (
+                              <span className="inline-flex items-center rounded-full bg-blue-100 text-blue-700 px-2 py-0.5 text-xs font-medium">
+                                返金済
+                              </span>
+                            ) : attendee.payment_status === "failed" ? (
+                              <span className="inline-flex items-center rounded-full bg-red-100 text-red-700 px-2 py-0.5 text-xs font-medium">
+                                決済失敗
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center rounded-full bg-amber-100 text-amber-700 px-2 py-0.5 text-xs font-medium">
+                                未決済
+                              </span>
+                            )}
                           </TableCell>
                           <TableCell className="text-sm text-gray-500">
                             {attendee.applied_at ? formatDateTime(attendee.applied_at) : "-"}

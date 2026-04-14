@@ -29,8 +29,47 @@ export async function GET(
       .eq("seminar_id", id)
       .order("applied_at", { ascending: false })
 
+    // 決済情報をセミナー単位で取得し、friend_id毎に最新ステータスを割り当てる
+    // status優先度: paid > pending > refunded > failed
+    // 同一friendに複数レコードがある場合は paid を優先し、なければ最新の作成日時を採用
+    const { data: paymentRows } = await supabase
+      .from("payments")
+      .select("friend_id, status, amount, paid_at, created_at")
+      .eq("seminar_id", id)
+      .order("created_at", { ascending: false })
+
+    const paymentByFriend = new Map<
+      string,
+      { status: string; amount: number | null; paid_at: string | null }
+    >()
+    for (const row of paymentRows || []) {
+      const friendId = (row as { friend_id: string | null }).friend_id
+      if (!friendId) continue
+      const existing = paymentByFriend.get(friendId)
+      // 既に paid が入っている場合は上書きしない
+      if (existing && existing.status === "paid") continue
+      const status = (row as { status: string }).status
+      const amount = (row as { amount: number | null }).amount
+      const paid_at = (row as { paid_at: string | null }).paid_at
+      // paid があれば必ず優先、それ以外は最新（order済み）の1件目のみ採用
+      if (status === "paid" || !existing) {
+        paymentByFriend.set(friendId, { status, amount, paid_at })
+      }
+    }
+
+    const attendeesWithPayment = (attendees || []).map((a) => {
+      const friendId = (a as { friend_id: string | null }).friend_id
+      const payment = friendId ? paymentByFriend.get(friendId) : undefined
+      return {
+        ...a,
+        payment_status: payment?.status ?? null,
+        payment_amount: payment?.amount ?? null,
+        paid_at: payment?.paid_at ?? null,
+      }
+    })
+
     return NextResponse.json({
-      data: { ...seminar, attendees: attendees || [] },
+      data: { ...seminar, attendees: attendeesWithPayment },
     })
   } catch (error) {
     console.error("Seminar GET error:", error)
