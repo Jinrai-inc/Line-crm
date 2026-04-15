@@ -19,6 +19,7 @@ import {
   ExternalLink,
   HandHeart,
   Send,
+  DoorOpen,
 } from "lucide-react"
 
 interface SettingsMenuItem {
@@ -94,6 +95,14 @@ const settingsMenuItems: SettingsMenuItem[] = [
     icon: <Timer className="h-6 w-6" />,
     iconBgColor: "bg-teal-100",
     iconColor: "text-teal-600",
+  },
+  {
+    title: "解約・データ書き出し",
+    description: "全データの一括エクスポートと解約時の手順チェックリスト",
+    href: "/settings/offboarding",
+    icon: <DoorOpen className="h-6 w-6" />,
+    iconBgColor: "bg-red-100",
+    iconColor: "text-red-600",
   },
 ]
 
