@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
     switch (event.type) {
       case "checkout.session.completed": {
         const session = event.data.object as Stripe.Checkout.Session
-        const { error } = await supabase
+        const { data: updated, error } = await supabase
           .from("payments")
           .update({
             status: "paid",
@@ -61,8 +61,44 @@ export async function POST(request: NextRequest) {
             paid_at: new Date().toISOString(),
           })
           .eq("stripe_checkout_session_id", session.id)
+          .select("id")
         if (error) {
-          console.error("Payment update error (checkout.session.completed):", error)
+          console.error("Payment update error (checkout.session.completed):", error, {
+            session_id: session.id,
+          })
+        } else if (!updated || updated.length === 0) {
+          // 既存の payments レコードが見つからなかった → CRM を介さずに
+          // 払われた可能性（静的Payment Link等）。後追いで行を作成しておく。
+          console.warn(
+            "Payment update matched 0 rows; inserting new paid record as fallback",
+            { session_id: session.id, payment_intent: session.payment_intent }
+          )
+          const amount = session.amount_total ?? 0
+          const currency = session.currency ?? "jpy"
+          const insertRow = {
+            organization_id: matchedSettings.organization_id!,
+            stripe_checkout_session_id: session.id,
+            stripe_payment_intent_id: (session.payment_intent as string) || null,
+            friend_id: session.metadata?.friend_id || null,
+            seminar_id: session.metadata?.seminar_id || null,
+            amount,
+            currency,
+            status: "paid",
+            payment_type: "checkout",
+            item_name:
+              (session.metadata?.item_name as string) ||
+              (session.metadata?.seminar_id
+                ? "セミナー参加費"
+                : "Stripe決済"),
+            payment_method: session.payment_method_types?.[0] || "card",
+            paid_at: new Date().toISOString(),
+          }
+          const { error: insertError } = await supabase
+            .from("payments")
+            .insert(insertRow)
+          if (insertError) {
+            console.error("Fallback payment insert error:", insertError, insertRow)
+          }
         }
 
         // 決済完了後のLINE通知処理
