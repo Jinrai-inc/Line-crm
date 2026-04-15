@@ -334,6 +334,7 @@ export default function FriendsPage() {
     }
     if (statusFilter !== "all") params.set("status", statusFilter)
     if (search) params.set("search", search)
+    if (selectedTagIds.length > 0) params.set("tagIds", selectedTagIds.join(","))
 
     const res = await fetch(`/api/friends/export?${params}`)
     if (!res.ok) return
@@ -341,7 +342,8 @@ export default function FriendsPage() {
     const url = URL.createObjectURL(blob)
     const a = document.createElement("a")
     a.href = url
-    a.download = "friends.csv"
+    const dateStr = new Date().toISOString().split("T")[0]
+    a.download = `friends_${dateStr}.csv`
     a.click()
     URL.revokeObjectURL(url)
   }
