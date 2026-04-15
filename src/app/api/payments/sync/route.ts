@@ -55,8 +55,35 @@ export async function POST() {
     let updatedCount = 0
     let failedCount = 0
     const errors: string[] = []
+    // 個別の診断情報（UIでトラブルシュートに使う）
+    const diagnostics: Array<{
+      payment_id: string
+      session_id: string | null
+      intent_id: string | null
+      stripe_payment_status: string | null
+      stripe_intent_status: string | null
+      action: "updated" | "no_change" | "no_stripe_info" | "error"
+      error?: string
+    }> = []
 
     for (const payment of pendingPayments) {
+      const diag: {
+        payment_id: string
+        session_id: string | null
+        intent_id: string | null
+        stripe_payment_status: string | null
+        stripe_intent_status: string | null
+        action: "updated" | "no_change" | "no_stripe_info" | "error"
+        error?: string
+      } = {
+        payment_id: payment.id as string,
+        session_id: (payment.stripe_checkout_session_id as string | null) || null,
+        intent_id: (payment.stripe_payment_intent_id as string | null) || null,
+        stripe_payment_status: null,
+        stripe_intent_status: null,
+        action: "no_change",
+      }
+
       try {
         let stripeStatus: "paid" | "pending" | "failed" | "refunded" | null =
           null
@@ -69,6 +96,7 @@ export async function POST() {
         if (sessionId) {
           try {
             const session = await stripe.checkout.sessions.retrieve(sessionId)
+            diag.stripe_payment_status = session.payment_status || null
             // session.payment_status: "paid" | "unpaid" | "no_payment_required"
             if (
               session.payment_status === "paid" ||
@@ -81,6 +109,7 @@ export async function POST() {
             paymentIntentId =
               (session.payment_intent as string) || paymentIntentId
             paymentMethod = session.payment_method_types?.[0] || null
+            diag.intent_id = paymentIntentId
           } catch (sessionError) {
             console.warn(
               "Stripe session retrieve failed:",
@@ -94,6 +123,7 @@ export async function POST() {
         if (!stripeStatus && paymentIntentId) {
           try {
             const intent = await stripe.paymentIntents.retrieve(paymentIntentId)
+            diag.stripe_intent_status = intent.status || null
             if (intent.status === "succeeded") {
               stripeStatus = "paid"
             } else if (intent.status === "canceled") {
@@ -112,9 +142,12 @@ export async function POST() {
 
         if (!stripeStatus) {
           failedCount++
+          diag.action = "no_stripe_info"
+          diag.error = "Stripe側の情報を取得できませんでした"
           errors.push(
             `[payment ${payment.id}] Stripe側の情報を取得できませんでした`
           )
+          diagnostics.push(diag)
           continue
         }
 
@@ -138,16 +171,24 @@ export async function POST() {
             .eq("id", payment.id)
           if (updateError) {
             failedCount++
+            diag.action = "error"
+            diag.error = updateError.message
             errors.push(`[payment ${payment.id}] ${updateError.message}`)
           } else {
             updatedCount++
+            diag.action = "updated"
           }
+        } else {
+          diag.action = "no_change"
         }
       } catch (err) {
         failedCount++
         const msg = err instanceof Error ? err.message : "不明なエラー"
+        diag.action = "error"
+        diag.error = msg
         errors.push(`[payment ${payment.id}] ${msg}`)
       }
+      diagnostics.push(diag)
     }
 
     return NextResponse.json({
@@ -156,6 +197,7 @@ export async function POST() {
       updated: updatedCount,
       failed: failedCount,
       errors: errors.slice(0, 20),
+      diagnostics,
       message:
         updatedCount > 0
           ? `${updatedCount}件の決済を最新状態に更新しました`

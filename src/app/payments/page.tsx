@@ -11,6 +11,15 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { MoreHorizontalIcon } from "lucide-react"
+import {
   Table,
   TableHeader,
   TableBody,
@@ -115,6 +124,41 @@ export default function PaymentsPage() {
   useEffect(() => {
     fetchPayments()
   }, [fetchPayments])
+
+  // ── 手動でステータスを変更（Stripe同期が効かない場合の最終手段） ──
+  const handleManualStatusChange = async (paymentId: string, newStatus: string) => {
+    const label =
+      newStatus === "paid"
+        ? "支払済"
+        : newStatus === "refunded"
+        ? "返金済"
+        : newStatus === "failed"
+        ? "失敗"
+        : "未払い"
+    if (!confirm(`この決済を「${label}」に変更してもよろしいですか？`)) return
+    try {
+      const res = await fetch(`/api/payments/${paymentId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus }),
+      })
+      const data = await res.json()
+      if (res.ok && data.success) {
+        setSyncResult({
+          type: "success",
+          message: `決済ステータスを「${label}」に変更しました`,
+        })
+        await fetchPayments()
+      } else {
+        setSyncResult({
+          type: "error",
+          message: data.error || "更新に失敗しました",
+        })
+      }
+    } catch {
+      setSyncResult({ type: "error", message: "更新処理中にエラーが発生しました" })
+    }
+  }
 
   // ── Stripe 同期 ──────────────────────────────────────────────
   const handleStripeSync = async () => {
@@ -267,6 +311,7 @@ export default function PaymentsPage() {
                   <TableHead>支払日</TableHead>
                   <TableHead>友だち</TableHead>
                   <TableHead>作成日</TableHead>
+                  <TableHead className="w-12 text-right">操作</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -279,11 +324,12 @@ export default function PaymentsPage() {
                         <TableCell><Skeleton className="h-4 w-20" /></TableCell>
                         <TableCell><Skeleton className="h-4 w-20" /></TableCell>
                         <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+                        <TableCell><Skeleton className="h-8 w-8" /></TableCell>
                       </TableRow>
                     ))
                   : payments.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={6} className="h-32 text-center">
+                        <TableCell colSpan={7} className="h-32 text-center">
                           <div className="flex flex-col items-center gap-2 text-gray-400">
                             <CreditCardIcon className="size-8" />
                             <p>支払いが見つかりませんでした</p>
@@ -314,6 +360,62 @@ export default function PaymentsPage() {
                           </TableCell>
                           <TableCell className="text-gray-600 text-sm">
                             {formatDate(payment.created_at)}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="size-8"
+                                >
+                                  <MoreHorizontalIcon className="size-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuLabel className="text-xs font-normal text-gray-500">
+                                  ステータスを手動変更
+                                </DropdownMenuLabel>
+                                <DropdownMenuSeparator />
+                                {payment.status !== "paid" && (
+                                  <DropdownMenuItem
+                                    onClick={() =>
+                                      handleManualStatusChange(payment.id, "paid")
+                                    }
+                                  >
+                                    支払済にする
+                                  </DropdownMenuItem>
+                                )}
+                                {payment.status !== "pending" && (
+                                  <DropdownMenuItem
+                                    onClick={() =>
+                                      handleManualStatusChange(payment.id, "pending")
+                                    }
+                                  >
+                                    未払いに戻す
+                                  </DropdownMenuItem>
+                                )}
+                                {payment.status !== "refunded" && (
+                                  <DropdownMenuItem
+                                    onClick={() =>
+                                      handleManualStatusChange(payment.id, "refunded")
+                                    }
+                                  >
+                                    返金済にする
+                                  </DropdownMenuItem>
+                                )}
+                                {payment.status !== "failed" && (
+                                  <DropdownMenuItem
+                                    onClick={() =>
+                                      handleManualStatusChange(payment.id, "failed")
+                                    }
+                                    className="text-red-600 focus:text-red-700"
+                                  >
+                                    失敗にする
+                                  </DropdownMenuItem>
+                                )}
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           </TableCell>
                         </TableRow>
                       )
