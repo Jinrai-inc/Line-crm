@@ -669,6 +669,94 @@ async function handlePostback(
         .single()
 
       if (existing && existing.status !== "cancelled") {
+        // 既に申込済みだが、未決済の有料セミナーなら新しい決済リンクを再送する
+        // (Stripe Checkout Session はデフォルト24時間で期限切れになるため)
+        const { data: seminarForResendRaw } = await supabase
+          .from("seminars")
+          .select("title, payment_url, zoom_url, zoom_note")
+          .eq("id", seminarId)
+          .single()
+
+        const seminarForResend = seminarForResendRaw as { title: string; payment_url?: string | null; zoom_url?: string | null; zoom_note?: string | null; price?: number | null } | null
+        const resendPrice = (seminarForResend as Record<string, unknown> | null)?.price as number | null
+        if (resendPrice && resendPrice > 0) {
+          // 未決済の payment があるか確認
+          const { data: pendingPayment } = await supabase
+            .from("payments")
+            .select("id, status")
+            .eq("friend_id", friend.id)
+            .eq("seminar_id", seminarId)
+            .eq("status", "pending")
+            .limit(1)
+            .single()
+
+          if (pendingPayment) {
+            // 新しい Stripe Checkout Session を作成して再送
+            try {
+              const { data: stripeSettings } = await supabase
+                .from("stripe_settings")
+                .select("stripe_secret_key")
+                .eq("organization_id", context.organizationId)
+                .single()
+
+              if (stripeSettings?.stripe_secret_key) {
+                const { createStripeClient } = await import("@/lib/stripe/client")
+                const stripe = createStripeClient(stripeSettings.stripe_secret_key)
+                const origin = process.env.NEXT_PUBLIC_APP_URL || "https://example.com"
+
+                const newSession = await stripe.checkout.sessions.create({
+                  payment_method_types: ["card"],
+                  line_items: [{
+                    price_data: {
+                      currency: "jpy",
+                      product_data: { name: seminarForResend?.title || "セミナー" },
+                      unit_amount: resendPrice,
+                    },
+                    quantity: 1,
+                  }],
+                  mode: "payment",
+                  success_url: `${origin}/payment/complete?status=success`,
+                  cancel_url: `${origin}/payment/complete?status=cancel`,
+                  metadata: {
+                    organization_id: context.organizationId,
+                    friend_id: friend.id,
+                    seminar_id: seminarId,
+                  },
+                })
+
+                // 古い pending payment を新しい session ID で更新
+                await supabase
+                  .from("payments")
+                  .update({
+                    stripe_checkout_session_id: newSession.id,
+                    stripe_payment_intent_id: null,
+                  })
+                  .eq("id", pendingPayment.id)
+
+                if (newSession.url && event.replyToken) {
+                  await replyMessage(
+                    event.replyToken,
+                    [{
+                      type: "text",
+                      text: "すでにお申込み済みです。\n\nお支払いがまだの場合は、以下からお手続きをお願いいたします。\n（以前のリンクは期限切れの場合があるため、新しいリンクをお送りしました）",
+                    }],
+                    { accessToken: context.channelAccessToken }
+                  )
+                  await pushMessage(
+                    userId,
+                    [createPaymentMessage(seminarForResend?.title || "セミナー", newSession.url)],
+                    { accessToken: context.channelAccessToken }
+                  )
+                  break
+                }
+              }
+            } catch (resendError) {
+              console.error("Payment link resend error:", resendError)
+            }
+          }
+        }
+
+        // 未決済でない場合 or 再送失敗時はシンプルに「申込済み」
         if (event.replyToken) {
           await replyMessage(
             event.replyToken,
