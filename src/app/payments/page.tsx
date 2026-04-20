@@ -11,6 +11,15 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { MoreHorizontalIcon } from "lucide-react"
+import {
   Table,
   TableHeader,
   TableBody,
@@ -23,6 +32,10 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
   CreditCardIcon,
+  RefreshCwIcon,
+  Loader2Icon,
+  CheckCircleIcon,
+  AlertCircleIcon,
 } from "lucide-react"
 
 // ── Types ──────────────────────────────────────────────────────────────
@@ -75,6 +88,14 @@ export default function PaymentsPage() {
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
 
+  // Stripe 同期（pending 決済を Stripe 側の最新ステータスに揃える）
+  const [syncing, setSyncing] = useState(false)
+  const [syncResult, setSyncResult] = useState<
+    | { type: "success"; message: string }
+    | { type: "error"; message: string }
+    | null
+  >(null)
+
   // ── Fetch payments ──────────────────────────────────────────────────
 
   const fetchPayments = useCallback(async () => {
@@ -103,6 +124,72 @@ export default function PaymentsPage() {
   useEffect(() => {
     fetchPayments()
   }, [fetchPayments])
+
+  // ── 手動でステータスを変更（Stripe同期が効かない場合の最終手段） ──
+  const handleManualStatusChange = async (paymentId: string, newStatus: string) => {
+    const label =
+      newStatus === "paid"
+        ? "支払済"
+        : newStatus === "refunded"
+        ? "返金済"
+        : newStatus === "failed"
+        ? "失敗"
+        : "未払い"
+    if (!confirm(`この決済を「${label}」に変更してもよろしいですか？`)) return
+    try {
+      const res = await fetch(`/api/payments/${paymentId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus }),
+      })
+      const data = await res.json()
+      if (res.ok && data.success) {
+        setSyncResult({
+          type: "success",
+          message: `決済ステータスを「${label}」に変更しました`,
+        })
+        await fetchPayments()
+      } else {
+        setSyncResult({
+          type: "error",
+          message: data.error || "更新に失敗しました",
+        })
+      }
+    } catch {
+      setSyncResult({ type: "error", message: "更新処理中にエラーが発生しました" })
+    }
+  }
+
+  // ── Stripe 同期 ──────────────────────────────────────────────
+  const handleStripeSync = async () => {
+    if (syncing) return
+    setSyncing(true)
+    setSyncResult(null)
+    try {
+      const res = await fetch("/api/payments/sync", { method: "POST" })
+      const data = await res.json()
+      if (res.ok && data.success) {
+        setSyncResult({
+          type: "success",
+          message:
+            data.updated > 0
+              ? `${data.updated}件の決済ステータスを更新しました (${data.checked}件チェック)`
+              : data.message || "更新対象の決済はありませんでした",
+        })
+        // 一覧を再取得して反映
+        await fetchPayments()
+      } else {
+        setSyncResult({
+          type: "error",
+          message: data.error || "同期に失敗しました",
+        })
+      }
+    } catch {
+      setSyncResult({ type: "error", message: "同期処理中にエラーが発生しました" })
+    } finally {
+      setSyncing(false)
+    }
+  }
 
   // ── Helpers ────────────────────────────────────────────────────────
 
@@ -145,7 +232,47 @@ export default function PaymentsPage() {
       <PageHeader
         title="支払い一覧"
         description="Stripe決済の管理"
+        action={
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleStripeSync}
+            disabled={syncing}
+            title="未払いの決済をStripe側の最新ステータスに同期します"
+          >
+            {syncing ? (
+              <Loader2Icon className="animate-spin" />
+            ) : (
+              <RefreshCwIcon />
+            )}
+            {syncing ? "同期中..." : "Stripeと同期"}
+          </Button>
+        }
       />
+
+      {/* ── Stripe 同期 結果バナー ─────────────────────────────── */}
+      {syncResult && (
+        <div
+          className={`mb-4 flex items-start gap-2 rounded-lg border p-3 text-sm ${
+            syncResult.type === "success"
+              ? "border-green-200 bg-green-50 text-green-800"
+              : "border-red-200 bg-red-50 text-red-800"
+          }`}
+        >
+          {syncResult.type === "success" ? (
+            <CheckCircleIcon className="mt-0.5 size-4 shrink-0" />
+          ) : (
+            <AlertCircleIcon className="mt-0.5 size-4 shrink-0" />
+          )}
+          <div className="flex-1 whitespace-pre-wrap">{syncResult.message}</div>
+          <button
+            onClick={() => setSyncResult(null)}
+            className="text-xs underline opacity-70 hover:opacity-100"
+          >
+            閉じる
+          </button>
+        </div>
+      )}
 
       {/* ── Filters ─────────────────────────────────────────────── */}
       <div className="space-y-4 mb-6">
@@ -184,6 +311,7 @@ export default function PaymentsPage() {
                   <TableHead>支払日</TableHead>
                   <TableHead>友だち</TableHead>
                   <TableHead>作成日</TableHead>
+                  <TableHead className="w-12 text-right">操作</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -196,11 +324,12 @@ export default function PaymentsPage() {
                         <TableCell><Skeleton className="h-4 w-20" /></TableCell>
                         <TableCell><Skeleton className="h-4 w-20" /></TableCell>
                         <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+                        <TableCell><Skeleton className="h-8 w-8" /></TableCell>
                       </TableRow>
                     ))
                   : payments.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={6} className="h-32 text-center">
+                        <TableCell colSpan={7} className="h-32 text-center">
                           <div className="flex flex-col items-center gap-2 text-gray-400">
                             <CreditCardIcon className="size-8" />
                             <p>支払いが見つかりませんでした</p>
@@ -231,6 +360,62 @@ export default function PaymentsPage() {
                           </TableCell>
                           <TableCell className="text-gray-600 text-sm">
                             {formatDate(payment.created_at)}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="size-8"
+                                >
+                                  <MoreHorizontalIcon className="size-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuLabel className="text-xs font-normal text-gray-500">
+                                  ステータスを手動変更
+                                </DropdownMenuLabel>
+                                <DropdownMenuSeparator />
+                                {payment.status !== "paid" && (
+                                  <DropdownMenuItem
+                                    onClick={() =>
+                                      handleManualStatusChange(payment.id, "paid")
+                                    }
+                                  >
+                                    支払済にする
+                                  </DropdownMenuItem>
+                                )}
+                                {payment.status !== "pending" && (
+                                  <DropdownMenuItem
+                                    onClick={() =>
+                                      handleManualStatusChange(payment.id, "pending")
+                                    }
+                                  >
+                                    未払いに戻す
+                                  </DropdownMenuItem>
+                                )}
+                                {payment.status !== "refunded" && (
+                                  <DropdownMenuItem
+                                    onClick={() =>
+                                      handleManualStatusChange(payment.id, "refunded")
+                                    }
+                                  >
+                                    返金済にする
+                                  </DropdownMenuItem>
+                                )}
+                                {payment.status !== "failed" && (
+                                  <DropdownMenuItem
+                                    onClick={() =>
+                                      handleManualStatusChange(payment.id, "failed")
+                                    }
+                                    className="text-red-600 focus:text-red-700"
+                                  >
+                                    失敗にする
+                                  </DropdownMenuItem>
+                                )}
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           </TableCell>
                         </TableRow>
                       )

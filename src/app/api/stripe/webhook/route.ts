@@ -5,14 +5,17 @@ import { pushMessage } from "@/lib/line/client"
 import { createZoomLinkMessage } from "@/lib/line/flex-templates"
 import type Stripe from "stripe"
 
-// Stripe Webhookハンドラ
+// Stripe Webhook は 4xx/5xx が続くとエンドポイントを自動無効化 (disabled) するため、
+// LINE Webhook と同様に異常系でも常に HTTP 200 を返す方針とする。
+// エラー原因は console.warn/error と reason フィールドで Vercel ログから追跡する。
 export async function POST(request: NextRequest) {
   try {
     const body = await request.text()
     const sig = request.headers.get("stripe-signature")
 
     if (!sig) {
-      return NextResponse.json({ error: "署名がありません" }, { status: 400 })
+      console.warn("Stripe Webhook: missing stripe-signature header")
+      return NextResponse.json({ status: "ignored", reason: "missing_signature" })
     }
 
     // Admin clientを使用（Webhookはユーザー認証なし）
@@ -25,7 +28,8 @@ export async function POST(request: NextRequest) {
       .select("*")
 
     if (!allSettings || allSettings.length === 0) {
-      return NextResponse.json({ error: "Stripe設定が見つかりません" }, { status: 400 })
+      console.warn("Stripe Webhook: no stripe_settings found in database")
+      return NextResponse.json({ status: "ignored", reason: "no_stripe_settings" })
     }
 
     let event: Stripe.Event | null = null
@@ -45,14 +49,15 @@ export async function POST(request: NextRequest) {
     }
 
     if (!event || !matchedSettings) {
-      return NextResponse.json({ error: "Webhook署名の検証に失敗しました" }, { status: 400 })
+      console.warn("Stripe Webhook: signature validation failed for all registered settings")
+      return NextResponse.json({ status: "ignored", reason: "invalid_signature" })
     }
 
     // イベント処理
     switch (event.type) {
       case "checkout.session.completed": {
         const session = event.data.object as Stripe.Checkout.Session
-        const { error } = await supabase
+        const { data: updated, error } = await supabase
           .from("payments")
           .update({
             status: "paid",
@@ -61,8 +66,44 @@ export async function POST(request: NextRequest) {
             paid_at: new Date().toISOString(),
           })
           .eq("stripe_checkout_session_id", session.id)
+          .select("id")
         if (error) {
-          console.error("Payment update error (checkout.session.completed):", error)
+          console.error("Payment update error (checkout.session.completed):", error, {
+            session_id: session.id,
+          })
+        } else if (!updated || updated.length === 0) {
+          // 既存の payments レコードが見つからなかった → CRM を介さずに
+          // 払われた可能性（静的Payment Link等）。後追いで行を作成しておく。
+          console.warn(
+            "Payment update matched 0 rows; inserting new paid record as fallback",
+            { session_id: session.id, payment_intent: session.payment_intent }
+          )
+          const amount = session.amount_total ?? 0
+          const currency = session.currency ?? "jpy"
+          const insertRow = {
+            organization_id: matchedSettings.organization_id!,
+            stripe_checkout_session_id: session.id,
+            stripe_payment_intent_id: (session.payment_intent as string) || null,
+            friend_id: session.metadata?.friend_id || null,
+            seminar_id: session.metadata?.seminar_id || null,
+            amount,
+            currency,
+            status: "paid",
+            payment_type: "checkout",
+            item_name:
+              (session.metadata?.item_name as string) ||
+              (session.metadata?.seminar_id
+                ? "セミナー参加費"
+                : "Stripe決済"),
+            payment_method: session.payment_method_types?.[0] || "card",
+            paid_at: new Date().toISOString(),
+          }
+          const { error: insertError } = await supabase
+            .from("payments")
+            .insert(insertRow)
+          if (insertError) {
+            console.error("Fallback payment insert error:", insertError, insertRow)
+          }
         }
 
         // 決済完了後のLINE通知処理
@@ -298,6 +339,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ received: true })
   } catch (error) {
     console.error("Stripe webhook error:", error)
-    return NextResponse.json({ error: "Webhookの処理に失敗しました" }, { status: 500 })
+    // エラーでも 200 を返す（Stripe の自動無効化を防止）
+    return NextResponse.json({ status: "error" })
   }
 }

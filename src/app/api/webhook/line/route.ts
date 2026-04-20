@@ -3,13 +3,17 @@ import { validateSignature } from "@/lib/line/signature"
 import { handleWebhookEvent } from "@/lib/line/webhook"
 import { createAdminClient } from "@/lib/supabase/server"
 
+// LINE Webhook は LINE 側が不安定判定して配送を止めてしまうことを避けるため、
+// 異常系でも常に HTTP 200 を返す方針とする。エラー原因は console.error と
+// レスポンスボディの reason フィールドで Vercel ログから追跡する。
 export async function POST(request: NextRequest) {
   try {
     const body = await request.text()
     const signature = request.headers.get("x-line-signature")
 
     if (!signature) {
-      return NextResponse.json({ error: "署名がありません" }, { status: 400 })
+      console.warn("Webhook: missing x-line-signature header")
+      return NextResponse.json({ status: "ignored", reason: "missing_signature" })
     }
 
     // line_accountsテーブルから全アカウントを取得して署名検証
@@ -20,7 +24,8 @@ export async function POST(request: NextRequest) {
       .eq("webhook_active", true)
 
     if (!lineAccounts || lineAccounts.length === 0) {
-      return NextResponse.json({ error: "LINE設定がありません" }, { status: 404 })
+      console.warn("Webhook: no active line_accounts (webhook_active=true) found")
+      return NextResponse.json({ status: "ignored", reason: "no_active_account" })
     }
 
     // 各アカウントの署名を検証
@@ -33,7 +38,8 @@ export async function POST(request: NextRequest) {
     }
 
     if (!matchedAccount) {
-      return NextResponse.json({ error: "署名検証に失敗しました" }, { status: 401 })
+      console.warn("Webhook: signature validation failed for all registered accounts")
+      return NextResponse.json({ status: "ignored", reason: "invalid_signature" })
     }
 
     const parsed = JSON.parse(body)
@@ -55,8 +61,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ status: "ok" })
   } catch (error) {
     console.error("Webhook error:", error)
-    // LINEにはエラーでも200を返す（リトライ防止）
-    return NextResponse.json({ status: "error" }, { status: 200 })
+    // LINEにはエラーでも200を返す（リトライ・不安定判定防止）
+    return NextResponse.json({ status: "error" })
   }
 }
 

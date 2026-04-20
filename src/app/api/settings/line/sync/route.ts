@@ -56,8 +56,29 @@ export async function POST(request: NextRequest) {
 
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}))
+        // 403 は「プレミアムID または 認証済みアカウント」以外で発生する LINE 側の制限
+        // https://developers.line.biz/ja/reference/messaging-api/#get-follower-ids
+        if (res.status === 403) {
+          return NextResponse.json(
+            {
+              error:
+                "フォロワー一覧APIが利用できません。この機能は「認証済みアカウント」または「プレミアムID」を持つLINE公式アカウントでのみ利用可能です（フリープランは対象外）。LINE Official Account Managerでアカウント種別をご確認ください。",
+            },
+            { status: 400 }
+          )
+        }
+        if (res.status === 401) {
+          return NextResponse.json(
+            { error: "チャネルアクセストークンが無効です。LINE連携設定を確認してください。" },
+            { status: 400 }
+          )
+        }
         return NextResponse.json(
-          { error: errData.message || "フォロワー一覧の取得に失敗しました。LINE Developersで「フォロワー一覧の取得」APIが有効か確認してください。" },
+          {
+            error:
+              errData.message ||
+              "フォロワー一覧の取得に失敗しました。LINE Developersで「フォロワー一覧の取得」APIが有効か確認してください。",
+          },
           { status: 400 }
         )
       }
