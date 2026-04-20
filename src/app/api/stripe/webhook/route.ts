@@ -5,14 +5,17 @@ import { pushMessage } from "@/lib/line/client"
 import { createZoomLinkMessage } from "@/lib/line/flex-templates"
 import type Stripe from "stripe"
 
-// Stripe Webhookハンドラ
+// Stripe Webhook は 4xx/5xx が続くとエンドポイントを自動無効化 (disabled) するため、
+// LINE Webhook と同様に異常系でも常に HTTP 200 を返す方針とする。
+// エラー原因は console.warn/error と reason フィールドで Vercel ログから追跡する。
 export async function POST(request: NextRequest) {
   try {
     const body = await request.text()
     const sig = request.headers.get("stripe-signature")
 
     if (!sig) {
-      return NextResponse.json({ error: "署名がありません" }, { status: 400 })
+      console.warn("Stripe Webhook: missing stripe-signature header")
+      return NextResponse.json({ status: "ignored", reason: "missing_signature" })
     }
 
     // Admin clientを使用（Webhookはユーザー認証なし）
@@ -25,7 +28,8 @@ export async function POST(request: NextRequest) {
       .select("*")
 
     if (!allSettings || allSettings.length === 0) {
-      return NextResponse.json({ error: "Stripe設定が見つかりません" }, { status: 400 })
+      console.warn("Stripe Webhook: no stripe_settings found in database")
+      return NextResponse.json({ status: "ignored", reason: "no_stripe_settings" })
     }
 
     let event: Stripe.Event | null = null
@@ -45,7 +49,8 @@ export async function POST(request: NextRequest) {
     }
 
     if (!event || !matchedSettings) {
-      return NextResponse.json({ error: "Webhook署名の検証に失敗しました" }, { status: 400 })
+      console.warn("Stripe Webhook: signature validation failed for all registered settings")
+      return NextResponse.json({ status: "ignored", reason: "invalid_signature" })
     }
 
     // イベント処理
@@ -334,6 +339,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ received: true })
   } catch (error) {
     console.error("Stripe webhook error:", error)
-    return NextResponse.json({ error: "Webhookの処理に失敗しました" }, { status: 500 })
+    // エラーでも 200 を返す（Stripe の自動無効化を防止）
+    return NextResponse.json({ status: "error" })
   }
 }
